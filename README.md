@@ -18,7 +18,7 @@ Requires Go 1.22+. Dependencies are portable Roaring bitmaps (`github.com/Roarin
 
 Each organization is one shard. Feed sites first, then stations, then datastreams. Sites store both a shown box and an exact box (plus digest points used for clustering). A datastream either names a station, or carries its own deployment intervals when it is attached to a site directly. Intervals are half-open Unix milliseconds; `EndsBefore == 0` means the deployment is still open. Pass non-overlapping intervals. The builder rejects overlaps; it does not merge them.
 
-`Finish` writes posting lists (purpose, measurement, `public_ok` / `member_ok`, open-site) and the interval table into one blob. `Open` unmarshals that blob and inserts each site's shown and exact boxes into R-trees. `Query` intersects the predicates you set, allocates temporary bitmaps only, and is safe for concurrent readers on the same shard.
+`AddDatastream` records the row into the posting lists (purpose, measurement, `public_ok` / `member_ok`, open-site), the interval table, and the forward rows. The datastream struct is not kept. `Finish` writes that index into one blob. `Open` unmarshals that blob and inserts each site's shown and exact boxes into R-trees. `Query` intersects the predicates you set, allocates temporary bitmaps only, and is safe for concurrent readers on the same shard.
 
 Empty query fields are left out of the predicate. An empty measurement list means all measurements; the same is true for sites, purpose, and a nil viewport. `IncludeMemberOnly` false uses `public_ok`; true uses `public_ok ∪ member_ok`.
 
