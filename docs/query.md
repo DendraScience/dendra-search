@@ -1,6 +1,6 @@
 # Query
 
-`Query` reads one immutable shard. It allocates temporary bitmaps and does not modify the shard. Concurrent calls on the same shard are safe.
+`Query` evaluates one request against an immutable shard: which datastreams match, which sites those hits land on, and whether the map should show clusters or individual sites. It allocates temporary bitmaps and does not modify the shard. Concurrent calls on the same shard are safe.
 
 Empty fields are left out of the predicate.
 
@@ -29,15 +29,15 @@ Purpose stays in both. Counts are returned only when the layer is sites, includi
 
 ## Time
 
-Intervals are half-open `[BeginsAt, EndsBefore)` in Unix milliseconds. `EndsBefore == 0` means open. Each datastream has exactly one open interval. Intervals must already be non-overlapping.
+Intervals are half-open `[BeginsAt, EndsBefore)` in Unix milliseconds. `EndsBefore == 0` means open. Each datastream has exactly one open interval. Intervals must already be non-overlapping; the builder rejects overlaps rather than merging them.
 
-With no window, a datastream is at its open site. Posting lists for that path are built at `Finish`. With a window, a datastream matches every interval that overlaps the window, including a site it has since left. That path builds temporary bitmaps from the interval table.
+With no window, a datastream is at its open site. Posting lists for that path are built at `Finish`. With a window, a datastream matches every interval that overlaps the window, including a site it has since left. That path builds temporary bitmaps from the interval table instead of the open-site postings.
 
 ## Map layer
 
 Candidate sites are sites with at least one hit. The count is distinct sites, not datastreams.
 
-The layer is `clusters` when the candidate count is above `MapSiteLimit`, or when `Zoom` is below `MinSiteZoom`. Zoom 0 is the world. Facet arrays are empty in that layer. `TotalCount` is still set.
+The layer is `clusters` when the candidate count is above `MapSiteLimit`, or when `Zoom` is below `MinSiteZoom`. Zoom 0 is the world. Facet arrays are empty in that layer so a zoomed-out request does not return the full measurement vocabulary. `TotalCount` is still set.
 
 Otherwise the layer is `sites`: one marker per candidate, the disjunctive counts, and a page of hits.
 
@@ -47,6 +47,6 @@ Hits are in doc id order. `PageAfter` is the first doc id to return. `NextPageAf
 
 ## Combine
 
-Explore pins one organization at a time. `Combine` takes those results and clusters the merged candidates once. Measurement counts and site counts are summed. Two nearby sites from different organizations stay two sites, or two members of one cluster. They are not merged into one organization.
+When a host has queried several organization shards, `Combine` clusters the merged candidates once and sums measurement and site counts. Two nearby sites from different organizations stay two sites, or two members of one cluster. They are not collapsed into a single organization.
 
 `Combine` does not page across shards. Concatenated hits follow the order of the parts you pass. `HasMore` is set when any part has another page.

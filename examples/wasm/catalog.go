@@ -11,10 +11,6 @@ import (
 	"github.com/dendrascience/dendra-search"
 )
 
-// Demo catalog sizes match the benchmark fixtures. The layout does not:
-// a station is a logger with several datastreams, and some sites are areas.
-// Rings are returned beside the shard. The index still stores the ring's box.
-
 const demoEpoch int64 = 1_700_000_000_000
 
 var demoOutliers = []search.Point{
@@ -52,6 +48,11 @@ type placedSite struct {
 	index int
 }
 
+// demoCatalog builds one shard per organization at spec's size.
+// Sites are points in the California box, plus the nine outlier stand-ins.
+// About one in-box site in five is a reserve outline. The shard stores that
+// outline's box. The ring is returned beside the bytes so the page can draw it.
+// Datastreams share a logger, about five sensors each.
 func demoCatalog(spec search.Spec) (search.Fixture, []areaJSON, error) {
 	if spec.Orgs < 1 || spec.Sites < 1 || spec.Datastreams < 1 {
 		return search.Fixture{}, nil, fmt.Errorf("search: fixture %s: %w", spec.Name, search.ErrInvalid)
@@ -240,6 +241,8 @@ func spread(total, parts int) []int {
 	return out
 }
 
+// reserveRing returns a closed outline around p and the box the index stores.
+// The ring is what the page draws. Query matches the box.
 func reserveRing(p search.Point, rng *rand.Rand) ([][]float64, search.Box) {
 	n := 5 + rng.Intn(3)
 	r0 := 0.04 + rng.Float64()*0.08

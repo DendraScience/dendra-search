@@ -1,6 +1,6 @@
 # Map demo
 
-A static page in the shape of Explore. It builds a fixture in the browser, then draws clusters or sites from `searchQuery`. MapLibre and the OpenFreeMap Liberty style load from the network. The search module does not.
+A static page in the shape of Explore. It builds a fixture in the browser, then draws clusters or sites from `searchQuery`. Use this when you want to see how zoom, viewport, shown vs exact, and member-only filters change the layer without standing up the API. MapLibre and the OpenFreeMap Liberty style load from the network. The search module does not.
 
 ```bash
 ./examples/wasm/build.sh examples/map/search.wasm

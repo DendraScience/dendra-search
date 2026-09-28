@@ -1,3 +1,6 @@
+// Explore-shaped page. searchBuild and searchQuery live in the wasm module.
+// This file holds the selection and draws the result. It does not run the index.
+
 const STYLE = "https://tiles.openfreemap.org/styles/liberty";
 const PAGE_SIZE = 25;
 
@@ -44,6 +47,8 @@ let initial = { bbox: null, z: null };
 
 const $ = (id) => document.getElementById(id);
 
+// parseURL restores the shareable selection. Dataset size, geometry, and
+// member-only stay on the demo strip and are not part of the URL.
 function parseURL() {
   const params = new URLSearchParams(location.search);
   if (params.has("purpose") && purposes.has(params.get("purpose"))) {
@@ -100,6 +105,8 @@ function viewportFromMap() {
   return { west, south, east, north };
 }
 
+// writeURL records the camera and the filters. replaceState keeps a pan
+// from adding a history entry.
 function writeURL() {
   const params = new URLSearchParams();
   const bounds = map.getBounds();
@@ -170,6 +177,8 @@ function bindControls() {
   });
 }
 
+// refresh queries now and starts again at the first page. Filter changes
+// use this. The map's own moveend is ignored until it settles.
 function refresh() {
   if (!state.built) return;
   window.clearTimeout(moveTimer);
@@ -177,6 +186,8 @@ function refresh() {
   runQuery();
 }
 
+// onMoveEnd waits for the camera to settle, then queries. The first page
+// starts over because the extent changed.
 function onMoveEnd() {
   window.clearTimeout(moveTimer);
   moveTimer = window.setTimeout(() => {
@@ -185,6 +196,9 @@ function onMoveEnd() {
   }, 250);
 }
 
+// maybeStart runs once the style and the wasm module are both ready.
+// A shared bbox is applied before the first build so the opening query
+// uses that camera.
 function maybeStart() {
   if (!mapReady || !wasmReady || started) return;
   started = true;
@@ -201,6 +215,8 @@ function maybeStart() {
   rebuild();
 }
 
+// rebuild asks the module for the selected dataset, then queries.
+// searchBuild keeps the previous shards when the new build fails.
 function rebuild() {
   setStatus("Building…");
   window.setTimeout(() => {
@@ -228,6 +244,8 @@ function rebuild() {
   }, 0);
 }
 
+// runQuery sends the whole selection: viewport, zoom, purpose, and any
+// org, measurement, or site filters. The module decides clusters or sites.
 function runQuery() {
   if (!state.built || !map) return;
   const body = {
@@ -258,6 +276,8 @@ function runQuery() {
   renderResult(res);
 }
 
+// renderResult shows measurement counts, sites, and datastreams only when
+// the layer is sites. Cluster mode keeps purpose and organization filters.
 function renderResult(res) {
   const built = state.built;
   const bytes =
@@ -284,6 +304,8 @@ function renderResult(res) {
   renderHits(res);
 }
 
+// drawMarkers paints count badges, or one pin per point site.
+// A site with an outline is drawn by drawAreas instead of a pin.
 function drawMarkers(res) {
   for (const marker of markers) marker.remove();
   markers = [];
@@ -320,6 +342,8 @@ function drawMarkers(res) {
   }
 }
 
+// drawAreas fills the outlines stored at build time for sites in this result.
+// Cluster mode clears them. The ring is not part of the query response.
 function drawAreas(sites) {
   const src = map.getSource("areas");
   if (!src) return;
@@ -341,6 +365,8 @@ function drawAreas(sites) {
   src.setData({ type: "FeatureCollection", features });
 }
 
+// fitBox frames a cluster's expansion. A point-sized box is padded so the
+// camera does not zoom to its limit.
 function fitBox(box, reduce) {
   let { west, south, east, north } = box;
   if (!(south < north) || (east === west && south === north)) {
@@ -369,6 +395,8 @@ function fitBox(box, reduce) {
   );
 }
 
+// renderOrgs lists the organizations from the build. None pressed means
+// every organization. A pressed chip is sent on the next query.
 function renderOrgs() {
   const list = $("org-list");
   list.replaceChildren();
@@ -389,6 +417,8 @@ function renderOrgs() {
   }
 }
 
+// renderMeasurements lists every measurement the shard knows. A count of
+// zero stays on screen so selecting one does not hide the others.
 function renderMeasurements(counts) {
   const list = $("meas-list");
   list.replaceChildren();
@@ -444,6 +474,8 @@ function facetButton(title, sub, count, set, onClick, id) {
   return btn;
 }
 
+// renderHits groups the page under each logger. Checking a row updates the
+// cart and does not query again.
 function renderHits(res) {
   $("hit-count").textContent = res.total_count.toLocaleString();
   const list = $("hit-list");
@@ -496,6 +528,7 @@ function renderHits(res) {
   }
 }
 
+// stationLabel turns a demo logger id into the heading above its sensors.
 function stationLabel(hit) {
   const match = /^logger-(\d+)-(\d+)$/.exec(hit.station_id || "");
   if (match) return `Logger ${Number(match[2])} · ${hit.site_name}`;
@@ -503,6 +536,8 @@ function stationLabel(hit) {
   return hit.site_name;
 }
 
+// renderCart draws the checked datastreams. A query does not clear them,
+// so the selection survives a pan.
 function renderCart() {
   $("cart-count").textContent = state.cart.size.toLocaleString();
   const list = $("cart-list");
@@ -542,6 +577,8 @@ function toggle(set, id) {
   else set.add(id);
 }
 
+// boot starts the map and the wasm module. The module calls __searchOnReady
+// before it blocks, which is how the page learns searchBuild exists.
 function boot() {
   parseURL();
   syncControls();

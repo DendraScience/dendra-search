@@ -1,7 +1,6 @@
 # WASM example
 
-Build dendra-search for `GOOS=js GOARCH=wasm`. The stable API is the Go types; the
-`search*` JS functions are convenience wrappers for this example and the map page.
+Build dendra-search for `GOOS=js GOARCH=wasm` so a browser can build fixtures and run `Query` without a server. The stable API is still the Go types. The `search*` JS functions below are convenience wrappers for this example and the map page; do not treat them as the public contract for a product host.
 
 ```bash
 ./examples/wasm/build.sh

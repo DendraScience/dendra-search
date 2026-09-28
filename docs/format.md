@@ -1,8 +1,8 @@
 # Shard bytes
 
-`Finish` returns one byte slice. `Open` is the only reader. Hosts store the slice and do not interpret it. This note is for debugging a bad blob.
+`Finish` returns one byte slice that a host can put in object storage and hand to `Open` later. Hosts should treat the slice as opaque. This note is for debugging a bad blob or understanding what lives on disk versus what `Open` builds in memory.
 
-The R-trees are not in the file. `Open` inserts each site's shown box and exact box into `github.com/tidwall/rtree`. Roaring buffers are the portable format from `Bitmap.WriteTo` (the Roaring format spec), not the frozen format. `Open` copies them onto the heap with `ReadFrom`. It does not memory-map the slice.
+The R-trees are not in the file. `Open` inserts each site's shown box and exact box into `github.com/tidwall/rtree`. Roaring buffers are the portable format from `Bitmap.WriteTo` (the Roaring format spec), not the frozen format. `Open` copies them onto the heap with `ReadFrom`. It does not memory-map the slice, so the same bytes work the same way on API replicas and in wasm.
 
 Integers are little-endian. A string is a `uint32` byte length followed by the bytes. A bitmap is a `uint32` byte length followed by the roaring buffer. Floats are IEEE-754 binary64.
 

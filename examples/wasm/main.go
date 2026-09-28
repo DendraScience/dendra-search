@@ -101,6 +101,9 @@ type buildOut struct {
 	Areas       []areaJSON `json:"areas"`
 }
 
+// build opens one shard per organization and keeps them for later queries.
+// Organization names come from a sites-mode read of each shard. A failed
+// build leaves the previous shards in place.
 func build(raw string) (buildOut, error) {
 	if raw == "" {
 		return buildOut{}, fmt.Errorf("search: name or orgs, sites, and datastreams required")
@@ -163,6 +166,9 @@ func build(raw string) (buildOut, error) {
 	}, nil
 }
 
+// loadCatalog chooses the catalog. layout "demo" is the map page: shared
+// loggers and area outlines. A preset name with no layout is a benchmark
+// fixture. Counts with no name call Generate.
 func loadCatalog(in specIn) (search.Fixture, []areaJSON, error) {
 	spec, named, err := catalogSpec(in)
 	if err != nil {
@@ -179,6 +185,8 @@ func loadCatalog(in specIn) (search.Fixture, []areaJSON, error) {
 	return fix, nil, err
 }
 
+// catalogSpec maps a preset name to its size. The bool is false when the
+// caller passed counts instead of a name.
 func catalogSpec(in specIn) (search.Spec, bool, error) {
 	switch in.Name {
 	case "today-org":
@@ -199,6 +207,7 @@ func catalogSpec(in specIn) (search.Spec, bool, error) {
 	}
 }
 
+// fixture loads a named benchmark catalog. Those catalogs have no area rings.
 func fixture(in specIn) (search.Fixture, error) {
 	switch in.Name {
 	case "today-org":
@@ -307,6 +316,9 @@ type queryOut struct {
 	ElapsedMs         float64       `json:"elapsed_ms"`
 }
 
+// query runs the same Query on each selected shard.
+// One shard returns that shard's page cursor. Several shards go through
+// Combine, which concatenates the first page and has no cross-org cursor.
 func query(raw string) (queryOut, error) {
 	if len(loaded) == 0 {
 		return queryOut{}, fmt.Errorf("search: searchBuild first")
@@ -366,6 +378,9 @@ func query(raw string) (queryOut, error) {
 	return out, nil
 }
 
+// selectShards returns every loaded organization when ids is empty.
+// Ids that were not built are dropped. An error means the caller named
+// organizations and none of them are loaded.
 func selectShards(ids []string) ([]*search.Shard, error) {
 	if len(ids) == 0 {
 		out := make([]*search.Shard, len(loaded))
@@ -390,6 +405,9 @@ func selectShards(ids []string) ([]*search.Shard, error) {
 	return out, nil
 }
 
+// present copies the fields the page draws. Candidate sites, which Combine
+// needs and the page must not receive, are left out. next_page_after is set
+// only when paged is true.
 func present(res search.Result, paged bool) queryOut {
 	out := queryOut{
 		Kind:              res.Kind.String(),
