@@ -1,0 +1,175 @@
+package search
+
+// Geometry names stored on every site. The caller picks one per query.
+const (
+	GeometryShown = "shown"
+	GeometryExact = "exact"
+)
+
+// Defaults when a query leaves the map limits at zero.
+const (
+	DefaultMapSiteLimit uint32 = 40
+	DefaultMinSiteZoom  uint32 = 8
+)
+
+// Purpose values used by the fixtures. Query treats purpose as an ordinary string.
+const (
+	PurposeReadyToUse        = "ReadytoUse"
+	PurposeRaw               = "Raw"
+	PurposeStatusInformation = "StatusInformation"
+)
+
+// Box is a longitude/latitude rectangle. West and South are the minimums,
+// East and North the maximums. A point is a box whose corners are equal.
+// A viewport may wrap the antimeridian (East < West). A site box may not.
+type Box struct {
+	West, South, East, North float64
+}
+
+// Point is a WGS84 digest point. Clustering uses this, not a centroid
+// substituted for an area box.
+type Point struct {
+	Lon, Lat float64
+}
+
+// Site is one place in an organization shard. Shown and Exact are both stored.
+// Open inserts each box into its own R-tree.
+type Site struct {
+	ID               string
+	Name             string
+	OrganizationID   string
+	OrganizationName string
+	Shown            Box
+	Exact            Box
+	ShownPoint       Point
+	ExactPoint       Point
+}
+
+// Interval is a half-open deployment [BeginsAt, EndsBefore) in Unix milliseconds.
+// EndsBefore == 0 means the interval is still open.
+type Interval struct {
+	SiteID     string
+	BeginsAt   int64
+	EndsBefore int64
+}
+
+// Station holds deployment intervals for station-attached datastreams.
+type Station struct {
+	ID             string
+	OrganizationID string
+	Intervals      []Interval
+}
+
+// Datastream is one searchable row. Set StationID, or set Intervals for a
+// site-attached datastream, not both. Doc ids are assigned in AddDatastream order.
+type Datastream struct {
+	ID             string
+	Name           string
+	OrganizationID string
+	StationID      string
+	UnitName       string
+	Measurement    string
+	Purpose        string
+	PublicOK       bool
+	MemberOK       bool
+	Intervals      []Interval
+}
+
+// Kind is the map layer for a result.
+type Kind int
+
+const (
+	KindClusters Kind = 1
+	KindSites    Kind = 2
+)
+
+func (k Kind) String() string {
+	switch k {
+	case KindClusters:
+		return "clusters"
+	case KindSites:
+		return "sites"
+	default:
+		return "unspecified"
+	}
+}
+
+// Query is one read of a shard. Empty slices and a nil viewport leave that
+// predicate out. Both time bounds zero means the open deployment.
+type Query struct {
+	Purpose           string
+	Measurements      []string
+	SiteIDs           []string
+	BeginsAt          int64
+	EndsBefore        int64
+	Viewport          *Box
+	Geometry          string
+	Zoom              uint32
+	IncludeMemberOnly bool
+	MapSiteLimit      uint32
+	MinSiteZoom       uint32
+	// PageSize is the maximum number of hits to return. Zero returns none.
+	// TotalCount is still set.
+	PageSize uint32
+	// PageAfter is the first doc id to return, inclusive. Zero starts at the
+	// beginning. Pass Result.NextPageAfter only when Result.HasMore is set.
+	// The cursor is valid only for the byte slice this shard was opened from.
+	PageAfter uint32
+}
+
+// Count is one disjunctive facet row.
+type Count struct {
+	Value string
+	Count uint32
+}
+
+// Cluster is a web-mercator cell of candidate sites.
+type Cluster struct {
+	Centroid  Point
+	SiteCount uint32
+	Expansion Box
+}
+
+// SiteMarker is one candidate site in the geometry the caller named.
+type SiteMarker struct {
+	SiteID           string
+	Name             string
+	OrganizationID   string
+	OrganizationName string
+	Point            Point
+	Box              Box
+	DatastreamCount  uint32
+}
+
+// Hit is one matching datastream in doc id order.
+type Hit struct {
+	DocID            uint32
+	DatastreamID     string
+	Name             string
+	OrganizationID   string
+	OrganizationName string
+	StationID        string
+	SiteID           string
+	SiteName         string
+	UnitName         string
+	Measurement      string
+	Purpose          string
+}
+
+// Result is the map layer for one shard, or for Combine.
+// Candidates is the filtered site list before the cluster/site switch.
+// Combine uses it. Site and measurement counts are set only for KindSites.
+type Result struct {
+	Kind              Kind
+	Clusters          []Cluster
+	Sites             []SiteMarker
+	Candidates        []SiteMarker
+	SiteTotal         uint32
+	Bounds            Box
+	SiteCounts        []Count
+	MeasurementCounts []Count
+	Hits              []Hit
+	TotalCount        uint32
+	NextPageAfter     uint32
+	HasMore           bool
+}

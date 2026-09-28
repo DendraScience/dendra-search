@@ -1,0 +1,20 @@
+# Binaries
+*.exe
+*.test
+*.out
+/bin/
+/dist/
+
+# Go
+coverage.txt
+coverage.html
+vendor/
+
+# OS
+.DS_Store
+
+# WASM example output. wasm_exec.js must match the Go that built the module.
+examples/wasm/search.wasm
+examples/wasm/wasm_exec.js
+examples/map/search.wasm
+examples/map/wasm_exec.js

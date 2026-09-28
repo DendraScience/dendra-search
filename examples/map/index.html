@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Explore</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/maplibre-gl@5.6.1/dist/maplibre-gl.css" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/atkinson-hyperlegible@5.2.6/latin-400.css" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/atkinson-hyperlegible@5.2.6/latin-700.css" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/fragment-mono@5.2.5/latin-400.css" />
+    <link rel="stylesheet" href="app.css" />
+  </head>
+  <body>
+    <header id="demo">
+      <p class="eyebrow">Demo</p>
+      <label class="field">
+        Dataset
+        <select id="fixture">
+          <option value="today-org">One organization</option>
+          <option value="today-catalog" selected>Catalog</option>
+          <option value="large-org">Large organization</option>
+          <option value="large-catalog">Large catalog</option>
+        </select>
+      </label>
+      <fieldset>
+        <legend>Geometry</legend>
+        <label><input type="radio" name="geom" value="shown" checked /> Shown</label>
+        <label><input type="radio" name="geom" value="exact" /> Exact</label>
+      </fieldset>
+      <label class="check"><input type="checkbox" id="member" /> Include member-only</label>
+      <p id="status" role="status">Loading map and search…</p>
+    </header>
+    <div id="main">
+      <aside id="panel">
+        <h1>Explore</h1>
+        <section>
+          <h2>Purpose</h2>
+          <label class="field">
+            <span class="sr">Purpose</span>
+            <select id="purpose">
+              <option value="ReadytoUse" selected>Ready to use</option>
+              <option value="Raw">Raw</option>
+              <option value="StatusInformation">Status</option>
+              <option value="">All purposes</option>
+            </select>
+          </label>
+        </section>
+        <section>
+          <h2>Organizations</h2>
+          <p class="hint" id="org-hint">All organizations</p>
+          <div id="org-list" class="orgs"></div>
+        </section>
+        <p id="layer-note" class="note">Zoom in to list datastreams.</p>
+        <section id="meas-section" hidden>
+          <h2>Measurements</h2>
+          <div id="meas-list" class="facets"></div>
+        </section>
+        <section id="site-section" hidden>
+          <h2>Sites</h2>
+          <div id="site-list" class="facets"></div>
+        </section>
+        <section id="hit-section" hidden>
+          <h2>Datastreams <span id="hit-count" class="count"></span></h2>
+          <div id="hit-list" class="hits"></div>
+          <div class="pager">
+            <button type="button" id="page-first">First</button>
+            <button type="button" id="page-next">Next</button>
+            <p id="page-note"></p>
+          </div>
+        </section>
+        <section>
+          <h2>Selected <span id="cart-count" class="count">0</span></h2>
+          <div id="cart-list" class="hits"></div>
+        </section>
+      </aside>
+      <div id="map"></div>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/maplibre-gl@5.6.1/dist/maplibre-gl.js"></script>
+    <script src="wasm_exec.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>
