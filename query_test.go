@@ -11,7 +11,8 @@ func TestAlgebra(t *testing.T) {
 		place("far", -105, 40),
 	}
 	stations := []Station{{
-		ID: "station-move",
+		ID:   "station-move",
+		Name: "Moved logger",
 		Intervals: []Interval{
 			{SiteID: "meadow", BeginsAt: 1000, EndsBefore: 2000},
 			{SiteID: "ridge", BeginsAt: 3000, EndsBefore: 0},
@@ -91,9 +92,15 @@ func TestAlgebra(t *testing.T) {
 	if !hasCandidate(openQ, "ridge") || hasCandidate(openQ, "meadow") {
 		t.Fatalf("open deployment sites: %+v", idsOf(openQ))
 	}
+	if len(openQ.Hits) != 1 || openQ.Hits[0].SiteName != "ridge" || openQ.Hits[0].StationName != "Moved logger" {
+		t.Fatalf("open hit %+v", openQ.Hits)
+	}
 	past := query(t, shard, Query{Geometry: GeometryShown, Zoom: 11, Measurements: []string{"Wind"}, BeginsAt: 1000, EndsBefore: 2000, PageSize: 5})
 	if !hasCandidate(past, "meadow") || hasCandidate(past, "ridge") {
 		t.Fatalf("historical site: %+v", idsOf(past))
+	}
+	if len(past.Hits) != 1 || past.Hits[0].SiteName != "meadow" || past.Hits[0].StationName != "Moved logger" {
+		t.Fatalf("window hit %+v", past.Hits)
 	}
 	gap := query(t, shard, Query{Geometry: GeometryShown, Zoom: 11, Measurements: []string{"Wind"}, BeginsAt: 2000, EndsBefore: 3000, PageSize: 5})
 	if gap.TotalCount != 0 {
@@ -201,9 +208,14 @@ func TestAntimeridian(t *testing.T) {
 func TestPaging(t *testing.T) {
 	var stations []Station
 	var datastreams []Datastream
+	// Names sort Z..V while datastream ids sort a..e. Paging stays in doc id order.
+	names := []string{"Zebra", "Yankee", "Xray", "Whiskey", "Victor"}
 	for i := 0; i < 5; i++ {
 		id := string(rune('a' + i))
-		stations = append(stations, Station{ID: "station-" + id, Intervals: []Interval{{SiteID: "a", BeginsAt: 1, EndsBefore: 0}}})
+		stations = append(stations, Station{
+			ID: "station-" + id, Name: names[i],
+			Intervals: []Interval{{SiteID: "a", BeginsAt: 1, EndsBefore: 0}},
+		})
 		datastreams = append(datastreams, Datastream{
 			ID: "datastream-" + id, StationID: "station-" + id, PublicOK: true, MemberOK: true,
 		})
@@ -218,6 +230,9 @@ func TestPaging(t *testing.T) {
 		}
 		for _, hit := range res.Hits {
 			got = append(got, hit.DatastreamID)
+			if hit.StationName != names[len(got)-1] {
+				t.Fatalf("station name %q on %s", hit.StationName, hit.DatastreamID)
+			}
 		}
 		if !res.HasMore {
 			break

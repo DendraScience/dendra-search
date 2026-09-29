@@ -151,6 +151,28 @@ func TestGeneratorShape(t *testing.T) {
 	if !ids["datastream-000001"] {
 		t.Fatal("gap excluded an open datastream")
 	}
+
+	named := query(t, shard, Query{
+		Geometry: GeometryExact, Zoom: 11, PageSize: 600, IncludeMemberOnly: true,
+	})
+	var siteAttached, stationAttached bool
+	for _, hit := range named.Hits {
+		switch hit.DatastreamID {
+		case "datastream-000000":
+			siteAttached = true
+			if hit.StationID != "" || hit.StationName != "" {
+				t.Fatalf("site-attached %+v", hit)
+			}
+		case "datastream-000001":
+			stationAttached = true
+			if hit.StationName != "Station 000001" {
+				t.Fatalf("station name %+v", hit)
+			}
+		}
+	}
+	if !siteAttached || !stationAttached {
+		t.Fatal("fixture hits missing station-name cases")
+	}
 }
 
 func mustFixture(t *testing.T, gen func() (Fixture, error)) Fixture {

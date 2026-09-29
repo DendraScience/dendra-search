@@ -21,10 +21,10 @@ func main() {
 	open := func(siteID string) []search.Interval {
 		return []search.Interval{{SiteID: siteID, BeginsAt: 1, EndsBefore: 0}}
 	}
-	must(b.AddStation(search.Station{ID: "station-meadow", Intervals: open("meadow")}))
-	must(b.AddStation(search.Station{ID: "station-ridge", Intervals: open("ridge")}))
-	must(b.AddStation(search.Station{ID: "station-creek", Intervals: open("creek")}))
-	must(b.AddStation(search.Station{ID: "station-outlier", Intervals: open("outlier")}))
+	must(b.AddStation(search.Station{ID: "station-meadow", Name: "Meadow logger", Intervals: open("meadow")}))
+	must(b.AddStation(search.Station{ID: "station-ridge", Name: "Ridge logger", Intervals: open("ridge")}))
+	must(b.AddStation(search.Station{ID: "station-creek", Name: "Creek logger", Intervals: open("creek")}))
+	must(b.AddStation(search.Station{ID: "station-outlier", Name: "Outlier logger", Intervals: open("outlier")}))
 
 	must(b.AddDatastream(row("datastream-air", "station-meadow", "Air", true)))
 	must(b.AddDatastream(row("datastream-soil", "station-meadow", "Soil", true)))
@@ -74,6 +74,9 @@ func main() {
 	fmt.Printf("\nzoom 11  %s  datastreams %d (guest)\n", sites.Kind, sites.TotalCount)
 	for _, site := range sites.Sites {
 		fmt.Printf("  %s  %d datastreams  %.2f, %.2f\n", site.Name, site.DatastreamCount, site.Point.Lon, site.Point.Lat)
+	}
+	for _, hit := range sites.Hits {
+		fmt.Printf("  %s  %s\n", hit.Name, hit.StationName)
 	}
 
 	member, err := shard.Query(search.Query{

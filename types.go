@@ -56,6 +56,7 @@ type Interval struct {
 // Station holds deployment intervals for station-attached datastreams.
 type Station struct {
 	ID             string
+	Name           string
 	OrganizationID string
 	Intervals      []Interval
 }
@@ -149,6 +150,7 @@ type Hit struct {
 	OrganizationID   string
 	OrganizationName string
 	StationID        string
+	StationName      string
 	SiteID           string
 	SiteName         string
 	UnitName         string

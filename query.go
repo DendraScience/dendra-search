@@ -245,6 +245,7 @@ func (s *Shard) hit(doc uint32, q Query) Hit {
 		OrganizationID:   row.organizationID,
 		OrganizationName: site.OrganizationName,
 		StationID:        row.stationID,
+		StationName:      row.stationName,
 		SiteID:           site.ID,
 		SiteName:         site.Name,
 		UnitName:         row.unit,

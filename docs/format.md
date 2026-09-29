@@ -44,9 +44,11 @@ ends_before     int64    // 0 means open
 Each forward row, in doc id order:
 
 ```text
-datastream id, name, station id, unit, measurement, purpose, organization id
+datastream id, name, station id, station name, unit, measurement, purpose, organization id
 open site index    uint32
 ```
+
+Station name is copied from the station. A site-attached datastream leaves it empty. Site name is not on this row.
 
 A posting section is a `uint32` count, then that many pairs of string key and bitmap. Keys are sorted. Purpose and measurement use the caller's strings. Open-site keys are site ids, and those bitmaps hold the datastreams whose open deployment is that site. Window queries do not use those bitmaps; they scan the interval table.
 

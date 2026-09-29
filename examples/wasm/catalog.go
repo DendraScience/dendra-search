@@ -140,6 +140,7 @@ func demoCatalog(spec search.Spec) (search.Fixture, []areaJSON, error) {
 				stationID := fmt.Sprintf("logger-%04d-%d", ps.index, ord+1)
 				stations = append(stations, search.Station{
 					ID:             stationID,
+					Name:           fmt.Sprintf("Logger %d", ord+1),
 					OrganizationID: orgID,
 					Intervals: []search.Interval{{
 						SiteID:     ps.site.ID,

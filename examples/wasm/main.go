@@ -294,6 +294,7 @@ type hitJSON struct {
 	OrganizationID   string `json:"organization_id"`
 	OrganizationName string `json:"organization_name"`
 	StationID        string `json:"station_id,omitempty"`
+	StationName      string `json:"station_name,omitempty"`
 	SiteID           string `json:"site_id"`
 	SiteName         string `json:"site_name"`
 	Measurement      string `json:"measurement"`
@@ -447,6 +448,7 @@ func present(res search.Result, paged bool) queryOut {
 			OrganizationID:   hit.OrganizationID,
 			OrganizationName: hit.OrganizationName,
 			StationID:        hit.StationID,
+			StationName:      hit.StationName,
 			SiteID:           hit.SiteID,
 			SiteName:         hit.SiteName,
 			Measurement:      hit.Measurement,

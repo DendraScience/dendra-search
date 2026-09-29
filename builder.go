@@ -194,6 +194,7 @@ func (b *Builder) AddDatastream(datastream Datastream) error {
 		datastreamID:   datastream.ID,
 		name:           datastream.Name,
 		stationID:      resolved.stationID,
+		stationName:    resolved.stationName,
 		unit:           datastream.UnitName,
 		measurement:    datastream.Measurement,
 		purpose:        datastream.Purpose,
@@ -255,8 +256,9 @@ func (b *Builder) Finish() ([]byte, uint32, error) {
 }
 
 type resolvedDatastream struct {
-	intervals []Interval
-	stationID string
+	intervals   []Interval
+	stationID   string
+	stationName string
 }
 
 func (b *Builder) resolve(datastream Datastream) (resolvedDatastream, error) {
@@ -264,12 +266,14 @@ func (b *Builder) resolve(datastream Datastream) (resolvedDatastream, error) {
 		return resolvedDatastream{}, fmt.Errorf("search: datastream %s: %w", datastream.ID, ErrDatastream)
 	}
 	var intervals []Interval
+	var stationName string
 	if datastream.StationID != "" {
 		idx, ok := b.stationAt[datastream.StationID]
 		if !ok {
 			return resolvedDatastream{}, fmt.Errorf("search: station %s: %w", datastream.StationID, ErrNotFound)
 		}
 		intervals = b.stations[idx].Intervals
+		stationName = b.stations[idx].Name
 	} else {
 		if len(datastream.Intervals) == 0 {
 			return resolvedDatastream{}, fmt.Errorf("search: datastream %s: %w", datastream.ID, ErrDatastream)
@@ -290,7 +294,7 @@ func (b *Builder) resolve(datastream Datastream) (resolvedDatastream, error) {
 			return resolvedDatastream{}, fmt.Errorf("search: datastream %s organization: %w", datastream.ID, ErrDatastream)
 		}
 	}
-	return resolvedDatastream{intervals: intervals, stationID: datastream.StationID}, nil
+	return resolvedDatastream{intervals: intervals, stationID: datastream.StationID, stationName: stationName}, nil
 }
 
 func addPosting(m map[string]*roaring.Bitmap, key string, doc uint32) {

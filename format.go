@@ -27,6 +27,7 @@ type forwardRow struct {
 	datastreamID   string
 	name           string
 	stationID      string
+	stationName    string
 	unit           string
 	measurement    string
 	purpose        string
@@ -73,6 +74,7 @@ func writeShard(img shardImage) ([]byte, error) {
 		e.str(row.datastreamID)
 		e.str(row.name)
 		e.str(row.stationID)
+		e.str(row.stationName)
 		e.str(row.unit)
 		e.str(row.measurement)
 		e.str(row.purpose)
@@ -410,6 +412,9 @@ func (d *dec) forward(siteCount uint32) (forwardRow, error) {
 		return forwardRow{}, err
 	}
 	if row.stationID, err = d.str(); err != nil {
+		return forwardRow{}, err
+	}
+	if row.stationName, err = d.str(); err != nil {
 		return forwardRow{}, err
 	}
 	if row.unit, err = d.str(); err != nil {

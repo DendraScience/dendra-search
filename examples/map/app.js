@@ -474,7 +474,7 @@ function facetButton(title, sub, count, set, onClick, id) {
   return btn;
 }
 
-// renderHits groups the page under each logger. Checking a row updates the
+// renderHits groups the page under each station. Checking a row updates the
 // cart and does not query again.
 function renderHits(res) {
   $("hit-count").textContent = res.total_count.toLocaleString();
@@ -528,12 +528,10 @@ function renderHits(res) {
   }
 }
 
-// stationLabel turns a demo logger id into the heading above its sensors.
+// stationLabel is the station name stored on the shard. A site-attached
+// datastream has none, so the heading is the site name.
 function stationLabel(hit) {
-  const match = /^logger-(\d+)-(\d+)$/.exec(hit.station_id || "");
-  if (match) return `Logger ${Number(match[2])} · ${hit.site_name}`;
-  if (hit.station_id) return hit.station_id;
-  return hit.site_name;
+  return hit.station_name || hit.site_name;
 }
 
 // renderCart draws the checked datastreams. A query does not clear them,

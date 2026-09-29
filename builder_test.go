@@ -97,6 +97,22 @@ func TestSliceHelpersLoop(t *testing.T) {
 	if shard.DocCount() != 2 {
 		t.Fatalf("docs %d", shard.DocCount())
 	}
+	res := query(t, shard, Query{Geometry: GeometryShown, Zoom: 11, PageSize: 10, IncludeMemberOnly: true})
+	if len(res.Hits) != 2 {
+		t.Fatalf("hits %d", len(res.Hits))
+	}
+	byID := map[string]Hit{}
+	for _, hit := range res.Hits {
+		byID[hit.DatastreamID] = hit
+	}
+	station := byID["datastream-1"]
+	if station.StationID != "station-1" || station.StationName != "Alpha logger" {
+		t.Fatalf("station hit %+v", station)
+	}
+	siteAttached := byID["datastream-2"]
+	if siteAttached.StationID != "" || siteAttached.StationName != "" {
+		t.Fatalf("site-attached hit %+v", siteAttached)
+	}
 }
 
 type rows struct {
@@ -109,7 +125,8 @@ func sampleRows() rows {
 	return rows{
 		sites: []Site{place("a", -120, 38), place("b", -121, 39)},
 		stations: []Station{{
-			ID: "station-1",
+			ID:   "station-1",
+			Name: "Alpha logger",
 			Intervals: []Interval{
 				{SiteID: "a", BeginsAt: 1, EndsBefore: 10},
 				{SiteID: "b", BeginsAt: 10, EndsBefore: 0},

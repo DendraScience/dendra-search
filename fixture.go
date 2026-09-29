@@ -180,6 +180,7 @@ func Generate(spec Spec) (Fixture, error) {
 				stationID := fmt.Sprintf("station-%06d", global)
 				stations = append(stations, Station{
 					ID:             stationID,
+					Name:           fmt.Sprintf("Station %06d", global),
 					OrganizationID: orgID,
 					Intervals:      intervals,
 				})

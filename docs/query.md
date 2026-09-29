@@ -43,7 +43,7 @@ Otherwise the layer is `sites`: one marker per candidate, the disjunctive counts
 
 Clusters are web-mercator cells 48 pixels on a side. The world width at zoom z is `256 * 2^z`. The centroid is the mean of the member digest points in the geometry you named. `Expansion` is the axis-aligned box of those members. A viewport with `East < West` is split at the antimeridian. Area sites are matched by their box, not by substituting the digest point.
 
-Hits are in doc id order. `PageAfter` is the first doc id to return. `NextPageAfter` is the cursor for the next page when `HasMore` is set. It is valid only for this shard's bytes. A rebuild assigns doc ids again. The RPC page token is not this cursor.
+Hits are in doc id order. `Query` has no order field. Each hit carries the datastream name, measurement, and station name from the forward row. Station name is empty when the datastream is site-attached. Site name is the site for this query: the open deployment, or the deployment that overlaps the date window. `PageAfter` is the first doc id to return. `NextPageAfter` is the cursor for the next page when `HasMore` is set. It is valid only for this shard's bytes. A rebuild assigns doc ids again. The RPC page token is not this cursor.
 
 ## Combine
 
