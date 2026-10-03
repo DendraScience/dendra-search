@@ -177,7 +177,7 @@ func demoCatalog(spec search.Spec) (search.Fixture, []areaJSON, error) {
 			return search.Fixture{}, nil, err
 		}
 		started := time.Now()
-		blob, n, err := b.Finish()
+		blob, n, err := b.Finish(search.FinishPrivate)
 		fix.Finish += time.Since(started)
 		if err != nil {
 			return search.Fixture{}, nil, err

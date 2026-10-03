@@ -42,7 +42,8 @@ ones; an empty list is every org from the build. The other fields match `Query`
 
 The reply is one combined result: `kind` (`"clusters"` or `"sites"`), `clusters`,
 `sites`, `site_total`, `bounds`, `site_counts`, `measurement_counts`, `hits`,
-`total_count`, `has_more`, `paged`, `elapsed_ms`. Candidate sites used only to
+`total_count`, `has_more`, `paged`, `elapsed_ms`. `measurement_counts` is set
+for both kinds. `site_counts` is set only for `"sites"`. Candidate sites used only to
 merge shards are left out. `paged` is true for a single shard, and
 `next_page_after` is set only then. Several shards are concatenated with `Combine`
 and have no cross-org cursor.

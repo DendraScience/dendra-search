@@ -99,6 +99,137 @@ func writeShard(img shardImage) ([]byte, error) {
 	return e.b, nil
 }
 
+// writePublicShard writes a DS01 shard of the public_ok rows in img.
+// Exact boxes and points in the file are copies of the shown values.
+// Doc ids and site indexes are packed in their original order, and a site
+// is stored only when a public row uses it. Postings are rebuilt from those
+// rows. img is not modified.
+//
+// This can only be done after all datastreams are added. The compact site
+// indexes depend on the full set of public rows, so they are assigned while
+// writing. Leaving img intact lets Finish run again.
+func writePublicShard(img shardImage) ([]byte, uint32, error) {
+	pubDoc := make([]uint32, len(img.forward))
+	isPublic := make([]bool, len(img.forward))
+	var publicDocs uint32
+	for i := range img.forward {
+		if img.publicOK != nil && img.publicOK.Contains(uint32(i)) {
+			pubDoc[i] = publicDocs
+			isPublic[i] = true
+			publicDocs++
+		}
+	}
+	publicSite := make([]bool, len(img.sites))
+	var publicIntervals uint32
+	var publicSites uint32
+	for _, iv := range img.intervals {
+		if int(iv.doc) >= len(isPublic) || !isPublic[iv.doc] {
+			continue
+		}
+		publicIntervals++
+		if iv.site < 0 || iv.site >= len(publicSite) {
+			return nil, 0, ErrFormat
+		}
+		if !publicSite[iv.site] {
+			publicSite[iv.site] = true
+			publicSites++
+		}
+	}
+	siteRemap := make([]int, len(img.sites))
+	for i := range siteRemap {
+		siteRemap[i] = -1
+	}
+
+	var e enc
+	e.b = append(e.b, formatMagic[:]...)
+	e.u16(formatVersion)
+	e.u32(publicDocs)
+	e.u32(publicSites)
+	var next uint32
+	for i := range img.sites {
+		if !publicSite[i] {
+			continue
+		}
+		siteRemap[i] = int(next)
+		next++
+		s := img.sites[i]
+		e.str(s.ID)
+		e.str(s.Name)
+		e.str(s.OrganizationID)
+		e.str(s.OrganizationName)
+		e.box(s.Shown)
+		e.box(s.Shown)
+		e.point(s.ShownPoint)
+		e.point(s.ShownPoint)
+	}
+	e.u32(publicIntervals)
+	for _, iv := range img.intervals {
+		if int(iv.doc) >= len(isPublic) || !isPublic[iv.doc] {
+			continue
+		}
+		site := siteRemap[iv.site]
+		if site < 0 {
+			return nil, 0, ErrFormat
+		}
+		e.u32(pubDoc[iv.doc])
+		e.u32(uint32(site))
+		e.i64(iv.begins)
+		e.i64(iv.ends)
+	}
+	purpose := map[string]*roaring.Bitmap{}
+	measurement := map[string]*roaring.Bitmap{}
+	currentSite := map[string]*roaring.Bitmap{}
+	memberOK := roaring.New()
+	for i, row := range img.forward {
+		if !isPublic[i] {
+			continue
+		}
+		if row.openSite < 0 || row.openSite >= len(siteRemap) || siteRemap[row.openSite] < 0 {
+			return nil, 0, ErrFormat
+		}
+		doc := pubDoc[i]
+		e.str(row.datastreamID)
+		e.str(row.name)
+		e.str(row.stationID)
+		e.str(row.stationName)
+		e.str(row.unit)
+		e.str(row.measurement)
+		e.str(row.purpose)
+		e.str(row.organizationID)
+		e.u32(uint32(siteRemap[row.openSite]))
+		if row.purpose != "" {
+			addPosting(purpose, row.purpose, doc)
+		}
+		if row.measurement != "" {
+			addPosting(measurement, row.measurement, doc)
+		}
+		if img.memberOK != nil && img.memberOK.Contains(uint32(i)) {
+			memberOK.Add(doc)
+		}
+		addPosting(currentSite, img.sites[row.openSite].ID, doc)
+	}
+	publicOK := roaring.New()
+	if publicDocs > 0 {
+		publicOK.AddRange(0, uint64(publicDocs))
+	}
+	if err := e.bitmaps(purpose); err != nil {
+		return nil, 0, err
+	}
+	if err := e.bitmaps(measurement); err != nil {
+		return nil, 0, err
+	}
+	if err := e.bitmap(publicOK); err != nil {
+		return nil, 0, err
+	}
+	if err := e.bitmap(memberOK); err != nil {
+		return nil, 0, err
+	}
+	if err := e.bitmaps(currentSite); err != nil {
+		return nil, 0, err
+	}
+	return e.b, publicDocs, nil
+}
+
 func readShard(raw []byte) (*Shard, error) {
 	d := dec{b: raw}
 	magic, err := d.bytes(4)
@@ -217,6 +348,9 @@ func (e *enc) point(p Point) {
 func (e *enc) bitmap(bm *roaring.Bitmap) error {
 	if bm == nil {
 		bm = roaring.New()
+	} else {
+		// RunOptimize mutates. Copy so a second Finish sees the same bits.
+		bm = bm.Clone()
 	}
 	bm.RunOptimize()
 	var buf bytes.Buffer

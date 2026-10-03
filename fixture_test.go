@@ -69,8 +69,11 @@ func TestCatalogZoom2(t *testing.T) {
 	if outside < 1 {
 		t.Fatal("no outlier badge")
 	}
-	if len(res.SiteCounts) != 0 || len(res.MeasurementCounts) != 0 {
-		t.Fatal("zoom 2 returned facet counts")
+	if len(res.MeasurementCounts) == 0 {
+		t.Fatal("zoom 2 omitted measurement counts")
+	}
+	if len(res.SiteCounts) != 0 {
+		t.Fatalf("zoom 2 site counts %d", len(res.SiteCounts))
 	}
 }
 

@@ -3,6 +3,11 @@
 
 const STYLE = "https://tiles.openfreemap.org/styles/liberty";
 const PAGE_SIZE = 25;
+// Below this zoom the layer is always clusters. The map opens at 3, so that
+// first view stays clustered. From 4 in, the site count decides.
+const MIN_SITE_ZOOM = 4;
+// More sites than this in the view stays clustered once the zoom floor is met.
+const MAP_SITE_LIMIT = 40;
 
 const measurementLabels = {
   Meas01: "Air temperature",
@@ -256,6 +261,8 @@ function runQuery() {
     viewport: viewportFromMap(),
     geometry: state.geometry,
     zoom: Math.max(0, Math.round(map.getZoom())),
+    min_site_zoom: MIN_SITE_ZOOM,
+    map_site_limit: MAP_SITE_LIMIT,
     include_member_only: state.includeMemberOnly,
     page_size: PAGE_SIZE,
     page_after: state.pageAfter,
@@ -276,8 +283,8 @@ function runQuery() {
   renderResult(res);
 }
 
-// renderResult shows measurement counts, sites, and datastreams only when
-// the layer is sites. Cluster mode keeps purpose and organization filters.
+// renderResult shows measurement counts at every zoom. Sites and datastreams
+// appear only when the layer is sites.
 function renderResult(res) {
   const built = state.built;
   const bytes =
@@ -292,14 +299,14 @@ function renderResult(res) {
   if (!sitesMode) {
     $("layer-note").textContent = `${countNoun(res.site_total, "site", "sites")} in this view. Zoom in to list datastreams.`;
   }
-  $("meas-section").hidden = !sitesMode;
+  $("meas-section").hidden = false;
   $("site-section").hidden = !sitesMode;
   $("hit-section").hidden = !sitesMode;
   drawMarkers(res);
   drawAreas(sitesMode ? res.sites : null);
+  renderMeasurements(res.measurement_counts);
   if (!sitesMode) return;
   for (const site of res.sites) siteInfo.set(site.site_id, site);
-  renderMeasurements(res.measurement_counts);
   renderSites(res.site_counts);
   renderHits(res);
 }
@@ -575,6 +582,18 @@ function toggle(set, id) {
   else set.add(id);
 }
 
+// showStateBoundaries darkens the Liberty state lines and draws them from
+// the starting zoom. The style keeps them light gray, dashed, and hidden
+// until zoom 5.
+function showStateBoundaries() {
+  if (!map.getLayer("boundary_3")) return;
+  map.setLayerZoomRange("boundary_3", 3, 24);
+  map.setPaintProperty("boundary_3", "line-color", "#2c3a48");
+  map.setPaintProperty("boundary_3", "line-opacity", 0.9);
+  map.setPaintProperty("boundary_3", "line-width", ["interpolate", ["linear"], ["zoom"], 3, 1.4, 7, 1.8, 11, 2.2]);
+  map.setPaintProperty("boundary_3", "line-dasharray", [3, 1.5]);
+}
+
 // boot starts the map and the wasm module. The module calls __searchOnReady
 // before it blocks, which is how the page learns searchBuild exists.
 function boot() {
@@ -591,6 +610,7 @@ function boot() {
   });
   map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
   map.on("load", () => {
+    showStateBoundaries();
     map.addSource("areas", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
     map.addLayer({
       id: "areas-fill",

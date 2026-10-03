@@ -53,3 +53,26 @@ Station name is copied from the station. A site-attached datastream leaves it em
 A posting section is a `uint32` count, then that many pairs of string key and bitmap. Keys are sorted. Purpose and measurement use the caller's strings. Open-site keys are site ids, and those bitmaps hold the datastreams whose open deployment is that site. Window queries do not use those bitmaps; they scan the interval table.
 
 `Open` rejects a bad magic, a version other than 1, a truncated buffer, or trailing bytes.
+
+`Finish(FinishPrivate)` writes the layout above. `Finish(FinishPublic)` writes a second `DS01` blob from the same index. Exact boxes and exact points in that blob are copies of the shown values. Only `public_ok` datastreams are stored, and a site is stored only when one of those datastreams uses it. Doc ids and site indexes in the public blob are renumbered. Member-only datastreams are absent.
+
+## Container
+
+`WriteContainer` frames public shards. `ParseContainer` is the reader. Chunk bytes are not inspected. Integers are little-endian, and a string is a `uint32` length plus bytes, matching the shard.
+
+```text
+"DSPC"                 4 bytes
+version                uint16 = 1
+chunkCount             uint32
+chunkCount times:
+    org id             string
+    chunk etag         string
+    chunk length       uint32
+    chunk bytes
+```
+
+`ParseContainer` rejects a bad magic, a version other than 1, a truncated buffer, a string or chunk longer than 64 MiB, or trailing bytes.
+
+## Version file
+
+`VersionFile` is the JSON object a host stores as `current.json`. It is not part of the shard or the container. `encoding` is omitted when empty, and empty means the named object is raw bytes. `"gzip"` is a label. This package does not compress. `doc_count`, `is_enabled`, `is_hidden`, and `public_ok` are omitted when unset, so a frame pointer can leave them out while a private pointer can still record `is_hidden: false`. `keep` lists version bins to spare until `until`.

@@ -13,8 +13,8 @@ func (s *Shard) Query(q Query) (Result, error) {
 	hits, withoutSites, withoutMeas, siteBM := s.evaluate(q)
 	res := lay(q, s.candidates(q, hits, siteBM))
 	res.TotalCount = uint32(hits.GetCardinality())
+	res.MeasurementCounts = measurementCounts(s.measurement, withoutMeas)
 	if res.Kind == KindSites {
-		res.MeasurementCounts = measurementCounts(s.measurement, withoutMeas)
 		res.SiteCounts = siteCounts(q, withoutSites, siteBM)
 	}
 	if q.PageSize > 0 {

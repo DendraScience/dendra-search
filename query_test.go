@@ -11,30 +11,31 @@ func TestAlgebra(t *testing.T) {
 		place("far", -105, 40),
 	}
 	stations := []Station{{
-		ID:   "station-move",
-		Name: "Moved logger",
+		ID:             "station-move",
+		Name:           "Moved logger",
+		OrganizationID: "org",
 		Intervals: []Interval{
 			{SiteID: "meadow", BeginsAt: 1000, EndsBefore: 2000},
 			{SiteID: "ridge", BeginsAt: 3000, EndsBefore: 0},
 		},
 	}}
 	datastreams := []Datastream{
-		{ID: "datastream-air-meadow", StationID: "station-1", Measurement: "Air", Purpose: PurposeReadyToUse, PublicOK: true, MemberOK: true},
-		{ID: "datastream-soil-meadow", StationID: "station-2", Measurement: "Soil", Purpose: PurposeReadyToUse, PublicOK: true, MemberOK: true},
-		{ID: "datastream-air-ridge", StationID: "station-3", Measurement: "Air", Purpose: PurposeReadyToUse, PublicOK: true, MemberOK: true},
-		{ID: "datastream-raw", StationID: "station-4", Measurement: "Air", Purpose: PurposeRaw, PublicOK: true, MemberOK: true},
-		{ID: "datastream-member", StationID: "station-5", Measurement: "Air", Purpose: PurposeReadyToUse, PublicOK: false, MemberOK: true},
-		{ID: "datastream-move", StationID: "station-move", Measurement: "Wind", Purpose: PurposeReadyToUse, PublicOK: true, MemberOK: true},
-		{ID: "datastream-far", StationID: "station-far", Measurement: "Heat", Purpose: PurposeReadyToUse, PublicOK: true, MemberOK: true},
+		{ID: "datastream-air-meadow", OrganizationID: "org", StationID: "station-1", Measurement: "Air", Purpose: PurposeReadyToUse, PublicOK: true, MemberOK: true},
+		{ID: "datastream-soil-meadow", OrganizationID: "org", StationID: "station-2", Measurement: "Soil", Purpose: PurposeReadyToUse, PublicOK: true, MemberOK: true},
+		{ID: "datastream-air-ridge", OrganizationID: "org", StationID: "station-3", Measurement: "Air", Purpose: PurposeReadyToUse, PublicOK: true, MemberOK: true},
+		{ID: "datastream-raw", OrganizationID: "org", StationID: "station-4", Measurement: "Air", Purpose: PurposeRaw, PublicOK: true, MemberOK: true},
+		{ID: "datastream-member", OrganizationID: "org", StationID: "station-5", Measurement: "Air", Purpose: PurposeReadyToUse, PublicOK: false, MemberOK: true},
+		{ID: "datastream-move", OrganizationID: "org", StationID: "station-move", Measurement: "Wind", Purpose: PurposeReadyToUse, PublicOK: true, MemberOK: true},
+		{ID: "datastream-far", OrganizationID: "org", StationID: "station-far", Measurement: "Heat", Purpose: PurposeReadyToUse, PublicOK: true, MemberOK: true},
 	}
 	open := []Interval{{SiteID: "meadow", BeginsAt: 1, EndsBefore: 0}}
 	stations = append(stations,
-		Station{ID: "station-1", Intervals: open},
-		Station{ID: "station-2", Intervals: open},
-		Station{ID: "station-3", Intervals: []Interval{{SiteID: "ridge", BeginsAt: 1, EndsBefore: 0}}},
-		Station{ID: "station-4", Intervals: open},
-		Station{ID: "station-5", Intervals: open},
-		Station{ID: "station-far", Intervals: []Interval{{SiteID: "far", BeginsAt: 1, EndsBefore: 0}}},
+		Station{ID: "station-1", OrganizationID: "org", Intervals: open},
+		Station{ID: "station-2", OrganizationID: "org", Intervals: open},
+		Station{ID: "station-3", OrganizationID: "org", Intervals: []Interval{{SiteID: "ridge", BeginsAt: 1, EndsBefore: 0}}},
+		Station{ID: "station-4", OrganizationID: "org", Intervals: open},
+		Station{ID: "station-5", OrganizationID: "org", Intervals: open},
+		Station{ID: "station-far", OrganizationID: "org", Intervals: []Interval{{SiteID: "far", BeginsAt: 1, EndsBefore: 0}}},
 	)
 	shard := buildShard(t, rows{sites: sites, stations: stations, datastreams: datastreams})
 
@@ -130,23 +131,34 @@ func TestClusterVersusSites(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		id := string(rune('a' + i))
 		sites = append(sites, place(id, -120.01+float64(i)*0.01, 38))
-		stations = append(stations, Station{ID: "station-" + id, Intervals: []Interval{{SiteID: id, BeginsAt: 1, EndsBefore: 0}}})
-		datastreams = append(datastreams, Datastream{ID: "datastream-" + id, StationID: "station-" + id, Measurement: "Air", PublicOK: true, MemberOK: true})
+		stations = append(stations, Station{ID: "station-" + id, OrganizationID: "org", Intervals: []Interval{{SiteID: id, BeginsAt: 1, EndsBefore: 0}}})
+		datastreams = append(datastreams, Datastream{ID: "datastream-" + id, OrganizationID: "org", StationID: "station-" + id, Measurement: "Air", PublicOK: true, MemberOK: true})
 	}
 	sites = append(sites, place("far", -105, 40))
-	stations = append(stations, Station{ID: "station-far", Intervals: []Interval{{SiteID: "far", BeginsAt: 1, EndsBefore: 0}}})
-	datastreams = append(datastreams, Datastream{ID: "datastream-far", StationID: "station-far", Measurement: "Air", PublicOK: true, MemberOK: true})
+	stations = append(stations, Station{ID: "station-far", OrganizationID: "org", Intervals: []Interval{{SiteID: "far", BeginsAt: 1, EndsBefore: 0}}})
+	datastreams = append(datastreams, Datastream{ID: "datastream-far", OrganizationID: "org", StationID: "station-far", Measurement: "Air", PublicOK: true, MemberOK: true})
 	shard := buildShard(t, rows{sites: sites, stations: stations, datastreams: datastreams})
 
 	clusters := query(t, shard, Query{Geometry: GeometryShown, Zoom: 2})
 	if clusters.Kind != KindClusters {
 		t.Fatalf("zoom 2 kind %s", clusters.Kind)
 	}
+	below := query(t, shard, Query{Geometry: GeometryShown, Zoom: 5})
+	if below.Kind != KindClusters {
+		t.Fatalf("zoom 5 kind %s", below.Kind)
+	}
+	regional := query(t, shard, Query{Geometry: GeometryShown, Zoom: 6})
+	if regional.Kind != KindSites || len(regional.Sites) != 4 {
+		t.Fatalf("zoom 6 %+v", regional.Sites)
+	}
 	if len(clusters.Clusters) != 2 {
 		t.Fatalf("clusters %+v", clusters.Clusters)
 	}
-	if len(clusters.MeasurementCounts) != 0 || len(clusters.SiteCounts) != 0 {
-		t.Fatal("cluster layer returned facet counts")
+	if countOf(clusters.MeasurementCounts, "Air") != 4 {
+		t.Fatalf("cluster measurement counts %+v", clusters.MeasurementCounts)
+	}
+	if len(clusters.SiteCounts) != 0 {
+		t.Fatalf("cluster site counts %+v", clusters.SiteCounts)
 	}
 	var dominant Cluster
 	for _, c := range clusters.Clusters {
@@ -162,13 +174,19 @@ func TestClusterVersusSites(t *testing.T) {
 	if sitesLayer.Kind != KindSites || len(sitesLayer.Sites) != 4 {
 		t.Fatalf("site layer %+v", sitesLayer.Sites)
 	}
-	if len(sitesLayer.MeasurementCounts) == 0 {
-		t.Fatal("site layer omitted measurement counts")
+	if countOf(sitesLayer.MeasurementCounts, "Air") != 4 || len(sitesLayer.SiteCounts) != 4 {
+		t.Fatalf("site layer counts meas %+v sites %+v", sitesLayer.MeasurementCounts, sitesLayer.SiteCounts)
 	}
 
 	forced := query(t, shard, Query{Geometry: GeometryShown, Zoom: 11, MapSiteLimit: 1})
 	if forced.Kind != KindClusters {
 		t.Fatalf("limit kind %s", forced.Kind)
+	}
+	if countOf(forced.MeasurementCounts, "Air") != 4 {
+		t.Fatalf("limit measurement counts %+v", forced.MeasurementCounts)
+	}
+	if len(forced.SiteCounts) != 0 {
+		t.Fatalf("limit site counts %+v", forced.SiteCounts)
 	}
 }
 
@@ -179,7 +197,7 @@ func TestAreaBoxNotCentroid(t *testing.T) {
 	shard := buildShard(t, rows{
 		sites: []Site{site},
 		datastreams: []Datastream{{
-			ID: "datastream-1", PublicOK: true, MemberOK: true,
+			ID: "datastream-1", OrganizationID: "org", PublicOK: true, MemberOK: true,
 			Intervals: []Interval{{SiteID: "reserve", BeginsAt: 1, EndsBefore: 0}},
 		}},
 	})
@@ -194,8 +212,8 @@ func TestAntimeridian(t *testing.T) {
 	shard := buildShard(t, rows{
 		sites: []Site{place("west", 170, 10), place("center", 0, 10)},
 		datastreams: []Datastream{
-			{ID: "datastream-w", PublicOK: true, MemberOK: true, Intervals: []Interval{{SiteID: "west", BeginsAt: 1, EndsBefore: 0}}},
-			{ID: "datastream-c", PublicOK: true, MemberOK: true, Intervals: []Interval{{SiteID: "center", BeginsAt: 1, EndsBefore: 0}}},
+			{ID: "datastream-w", OrganizationID: "org", PublicOK: true, MemberOK: true, Intervals: []Interval{{SiteID: "west", BeginsAt: 1, EndsBefore: 0}}},
+			{ID: "datastream-c", OrganizationID: "org", PublicOK: true, MemberOK: true, Intervals: []Interval{{SiteID: "center", BeginsAt: 1, EndsBefore: 0}}},
 		},
 	})
 	wrap := Box{West: 160, South: 0, East: -170, North: 20}
@@ -213,11 +231,11 @@ func TestPaging(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		id := string(rune('a' + i))
 		stations = append(stations, Station{
-			ID: "station-" + id, Name: names[i],
+			ID: "station-" + id, Name: names[i], OrganizationID: "org",
 			Intervals: []Interval{{SiteID: "a", BeginsAt: 1, EndsBefore: 0}},
 		})
 		datastreams = append(datastreams, Datastream{
-			ID: "datastream-" + id, StationID: "station-" + id, PublicOK: true, MemberOK: true,
+			ID: "datastream-" + id, OrganizationID: "org", StationID: "station-" + id, PublicOK: true, MemberOK: true,
 		})
 	}
 	shard := buildShard(t, rows{sites: []Site{place("a", -120, 38)}, stations: stations, datastreams: datastreams})

@@ -12,8 +12,8 @@ Empty fields are left out of the predicate.
 | `BeginsAt` and `EndsBefore` | The open deployment (`EndsBefore == 0` on the interval). Set both, or neither. |
 | `Viewport` | No geographic predicate. Clustering still uses `Geometry`. |
 | `IncludeMemberOnly` | `public_ok` only. True uses `public_ok ∪ member_ok`. |
-| `MapSiteLimit` | 40 |
-| `MinSiteZoom` | 8 |
+| `MapSiteLimit` | 100 |
+| `MinSiteZoom` | 6 |
 | `PageSize` | No hit rows. `TotalCount` is still set. |
 
 `Geometry` is required. It is `"shown"` or `"exact"`. The module does not choose which one a caller may see.
@@ -25,7 +25,7 @@ Disjunctive counts omit one dimension:
 - A site count is the number of hits at that site when the site filter is removed.
 - A measurement count is the number of hits for that measurement when the measurement filter is removed.
 
-Purpose stays in both. Counts are returned only when the layer is sites, including zeros for measurements that exist in the shard, so selecting one measurement does not hide the others. Selected sites are listed even when their count is zero.
+Purpose stays in both. Measurement counts are returned for both layers, including zeros for measurements that exist in the shard, so selecting one measurement does not hide the others. Site counts are returned only when the layer is sites. Selected sites are listed even when their count is zero.
 
 ## Time
 
@@ -37,9 +37,9 @@ With no window, a datastream is at its open site. Posting lists for that path ar
 
 Candidate sites are sites with at least one hit. The count is distinct sites, not datastreams.
 
-The layer is `clusters` when the candidate count is above `MapSiteLimit`, or when `Zoom` is below `MinSiteZoom`. Zoom 0 is the world. Facet arrays are empty in that layer so a zoomed-out request does not return the full measurement vocabulary. `TotalCount` is still set.
+The layer is `clusters` when the candidate count is above `MapSiteLimit`, or when `Zoom` is below `MinSiteZoom`. Zoom 0 is the world. That layer returns measurement counts and omits the site list, so a zoomed-out request does not return every site. `TotalCount` is still set.
 
-Otherwise the layer is `sites`: one marker per candidate, the disjunctive counts, and a page of hits.
+Otherwise the layer is `sites`: one marker per candidate, measurement counts, site counts, and a page of hits.
 
 Clusters are web-mercator cells 48 pixels on a side. The world width at zoom z is `256 * 2^z`. The centroid is the mean of the member digest points in the geometry you named. `Expansion` is the axis-aligned box of those members. A viewport with `East < West` is split at the antimeridian. Area sites are matched by their box, not by substituting the digest point.
 
@@ -47,6 +47,6 @@ Hits are in doc id order. `Query` has no order field. Each hit carries the datas
 
 ## Combine
 
-When a host has queried several organization shards, `Combine` clusters the merged candidates once and sums measurement and site counts. Two nearby sites from different organizations stay two sites, or two members of one cluster. They are not collapsed into a single organization.
+When a host has queried several organization shards, `Combine` clusters the merged candidates once and sums measurement counts. Site counts are summed when the merged layer is sites. Two nearby sites from different organizations stay two sites, or two members of one cluster. They are not collapsed into a single organization.
 
 `Combine` does not page across shards. Concatenated hits follow the order of the parts you pass. `HasMore` is set when any part has another page.

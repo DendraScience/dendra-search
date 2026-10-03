@@ -8,9 +8,10 @@ import (
 const clusterCellPx = 48
 
 // Combine merges per-organization results and chooses the map layer once.
-// Measurement counts and site counts are summed. Hits are concatenated in
-// the order of parts; paging stays on each shard. Pass the same query that
-// produced the parts, including zoom and the site limit.
+// Measurement counts are summed on every result. Site counts are summed only
+// when the merged layer is sites. Hits are concatenated in the order of
+// parts; paging stays on each shard. Pass the same query that produced the
+// parts, including zoom and the site limit.
 func Combine(q Query, parts []Result) (Result, error) {
 	if err := validateQuery(q); err != nil {
 		return Result{}, err
@@ -39,8 +40,8 @@ func Combine(q Query, parts []Result) (Result, error) {
 	res.TotalCount = total
 	res.Hits = hits
 	res.HasMore = hasMore
+	res.MeasurementCounts = countsFromMap(meas)
 	if res.Kind == KindSites {
-		res.MeasurementCounts = countsFromMap(meas)
 		res.SiteCounts = countsFromMap(sites)
 	}
 	return res, nil

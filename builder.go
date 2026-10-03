@@ -14,23 +14,38 @@ const (
 	stageFinished
 )
 
-// Builder accumulates one organization. Feed sites, then stations, then
-// datastreams. Each accepted datastream is recorded into the index immediately.
-// Finish serializes that index and returns the shard bytes and the doc count.
+// FinishMode selects which shard Finish writes. The index stays in place,
+// so Finish may be called again with the other mode.
+type FinishMode int
+
+const (
+	// FinishPrivate writes shown and exact boxes and every accepted datastream.
+	FinishPrivate FinishMode = iota
+	// FinishPublic writes exact boxes and points copied from shown, and
+	// public_ok datastreams only. Sites with no public datastream are omitted.
+	FinishPublic
+)
+
+// Builder accumulates one organization. The first added record sets
+// OrganizationID. Later records must use that same id. Feed sites, then
+// stations, then datastreams. Each accepted datastream is recorded into the
+// index immediately. Finish serializes that index and returns the shard bytes
+// and the doc count.
 type Builder struct {
-	stage        int
-	sites        []Site
-	siteAt       map[string]int
-	stations     []Station
-	stationAt    map[string]int
-	datastreamAt map[string]struct{}
-	intervals    []storedInterval
-	forward      []forwardRow
-	purpose      map[string]*roaring.Bitmap
-	measurement  map[string]*roaring.Bitmap
-	currentSite  map[string]*roaring.Bitmap
-	publicOK     *roaring.Bitmap
-	memberOK     *roaring.Bitmap
+	organizationID string
+	stage          int
+	sites          []Site
+	siteAt         map[string]int
+	stations       []Station
+	stationAt      map[string]int
+	datastreamAt   map[string]struct{}
+	intervals      []storedInterval
+	forward        []forwardRow
+	purpose        map[string]*roaring.Bitmap
+	measurement    map[string]*roaring.Bitmap
+	currentSite    map[string]*roaring.Bitmap
+	publicOK       *roaring.Bitmap
+	memberOK       *roaring.Bitmap
 }
 
 // NewBuilder returns an empty builder for one organization.
@@ -75,6 +90,9 @@ func (b *Builder) AddSite(site Site) error {
 	if site.ID == "" {
 		return fmt.Errorf("search: site id: %w", ErrInvalid)
 	}
+	if err := b.organization(site.OrganizationID); err != nil {
+		return err
+	}
 	if err := validateBox(site.Shown); err != nil {
 		return err
 	}
@@ -116,6 +134,9 @@ func (b *Builder) AddStation(station Station) error {
 	if station.ID == "" {
 		return fmt.Errorf("search: station id: %w", ErrInvalid)
 	}
+	if err := b.organization(station.OrganizationID); err != nil {
+		return err
+	}
 	if _, ok := b.stationAt[station.ID]; ok {
 		return fmt.Errorf("search: station %s: %w", station.ID, ErrDuplicate)
 	}
@@ -148,6 +169,9 @@ func (b *Builder) AddDatastream(datastream Datastream) error {
 	if datastream.ID == "" {
 		return fmt.Errorf("search: datastream id: %w", ErrInvalid)
 	}
+	if err := b.organization(datastream.OrganizationID); err != nil {
+		return err
+	}
 	if _, ok := b.datastreamAt[datastream.ID]; ok {
 		return fmt.Errorf("search: datastream %s: %w", datastream.ID, ErrDuplicate)
 	}
@@ -158,20 +182,15 @@ func (b *Builder) AddDatastream(datastream Datastream) error {
 	b.stage = stageDatastreams
 	b.datastreamAt[datastream.ID] = struct{}{}
 	doc := uint32(len(b.forward))
-	var openSite int
-	var openID string
+	openID := resolved.openID
+	openSite := b.siteAt[openID]
 	for _, iv := range resolved.intervals {
-		idx := b.siteAt[iv.SiteID]
 		b.intervals = append(b.intervals, storedInterval{
 			doc:    doc,
-			site:   idx,
+			site:   b.siteAt[iv.SiteID],
 			begins: iv.BeginsAt,
 			ends:   iv.EndsBefore,
 		})
-		if iv.EndsBefore == 0 {
-			openSite = idx
-			openID = iv.SiteID
-		}
 	}
 	addPosting(b.currentSite, openID, doc)
 	if datastream.Purpose != "" {
@@ -186,10 +205,6 @@ func (b *Builder) AddDatastream(datastream Datastream) error {
 	if datastream.MemberOK {
 		b.memberOK.Add(doc)
 	}
-	orgID := datastream.OrganizationID
-	if orgID == "" {
-		orgID = b.sites[openSite].OrganizationID
-	}
 	b.forward = append(b.forward, forwardRow{
 		datastreamID:   datastream.ID,
 		name:           datastream.Name,
@@ -198,7 +213,7 @@ func (b *Builder) AddDatastream(datastream Datastream) error {
 		unit:           datastream.UnitName,
 		measurement:    datastream.Measurement,
 		purpose:        datastream.Purpose,
-		organizationID: orgID,
+		organizationID: datastream.OrganizationID,
 		openSite:       openSite,
 	})
 	return nil
@@ -214,22 +229,35 @@ func (b *Builder) AddDatastreams(datastreams []Datastream) error {
 	return nil
 }
 
-// Finish serializes the index recorded by AddDatastream. A second call returns ErrFinished.
-func (b *Builder) Finish() ([]byte, uint32, error) {
-	if err := b.init(); err != nil {
-		return nil, 0, err
+// Finish serializes the index recorded by AddDatastream.
+// FinishPrivate writes every datastream. FinishPublic writes public_ok
+// datastreams only, with exact geometry copied from shown.
+// The index is left in place. Another Finish is allowed, in either order,
+// and the same mode twice returns the same bytes. Add after the first Finish
+// returns ErrFinished. An unknown mode returns ErrInvalid and does not seal.
+func (b *Builder) Finish(mode FinishMode) ([]byte, uint32, error) {
+	if b == nil {
+		return nil, 0, ErrInvalid
 	}
-	sort.Slice(b.intervals, func(i, j int) bool {
-		if b.intervals[i].doc != b.intervals[j].doc {
-			return b.intervals[i].doc < b.intervals[j].doc
-		}
-		if b.intervals[i].begins != b.intervals[j].begins {
-			return b.intervals[i].begins < b.intervals[j].begins
-		}
-		return b.intervals[i].site < b.intervals[j].site
-	})
-	n := uint32(len(b.forward))
-	blob, err := writeShard(shardImage{
+	if mode != FinishPrivate && mode != FinishPublic {
+		return nil, 0, ErrInvalid
+	}
+	if b.siteAt == nil {
+		b.resetIndex()
+	}
+	if b.stage != stageFinished {
+		sort.Slice(b.intervals, func(i, j int) bool {
+			if b.intervals[i].doc != b.intervals[j].doc {
+				return b.intervals[i].doc < b.intervals[j].doc
+			}
+			if b.intervals[i].begins != b.intervals[j].begins {
+				return b.intervals[i].begins < b.intervals[j].begins
+			}
+			return b.intervals[i].site < b.intervals[j].site
+		})
+		b.stage = stageFinished
+	}
+	img := shardImage{
 		sites:       b.sites,
 		intervals:   b.intervals,
 		forward:     b.forward,
@@ -238,25 +266,20 @@ func (b *Builder) Finish() ([]byte, uint32, error) {
 		currentSite: b.currentSite,
 		publicOK:    b.publicOK,
 		memberOK:    b.memberOK,
-	})
+	}
+	if mode == FinishPublic {
+		return writePublicShard(img)
+	}
+	blob, err := writeShard(img)
 	if err != nil {
 		return nil, 0, err
 	}
-	b.stage = stageFinished
-	b.sites = nil
-	b.stations = nil
-	b.intervals = nil
-	b.forward = nil
-	b.purpose = nil
-	b.measurement = nil
-	b.currentSite = nil
-	b.publicOK = nil
-	b.memberOK = nil
-	return blob, n, nil
+	return blob, uint32(len(b.forward)), nil
 }
 
 type resolvedDatastream struct {
 	intervals   []Interval
+	openID      string
 	stationID   string
 	stationName string
 }
@@ -283,18 +306,32 @@ func (b *Builder) resolve(datastream Datastream) (resolvedDatastream, error) {
 			return resolvedDatastream{}, err
 		}
 	}
-	var openSite string
+	// validateIntervals requires exactly one open interval.
+	var openID string
 	for _, iv := range intervals {
 		if iv.EndsBefore == 0 {
-			openSite = iv.SiteID
+			openID = iv.SiteID
+			break
 		}
 	}
-	if datastream.OrganizationID != "" && openSite != "" {
-		if org := b.sites[b.siteAt[openSite]].OrganizationID; org != "" && org != datastream.OrganizationID {
-			return resolvedDatastream{}, fmt.Errorf("search: datastream %s organization: %w", datastream.ID, ErrDatastream)
-		}
+	return resolvedDatastream{
+		intervals:   intervals,
+		openID:      openID,
+		stationID:   datastream.StationID,
+		stationName: stationName,
+	}, nil
+}
+
+// organization captures the builder organization from the first record and
+// rejects any later id that differs, including an empty one.
+func (b *Builder) organization(id string) error {
+	if id == "" || (b.organizationID != "" && id != b.organizationID) {
+		return ErrInvalid
 	}
-	return resolvedDatastream{intervals: intervals, stationID: datastream.StationID, stationName: stationName}, nil
+	if b.organizationID == "" {
+		b.organizationID = id
+	}
+	return nil
 }
 
 func addPosting(m map[string]*roaring.Bitmap, key string, doc uint32) {

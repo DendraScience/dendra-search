@@ -8,8 +8,8 @@ const (
 
 // Defaults when a query leaves the map limits at zero.
 const (
-	DefaultMapSiteLimit uint32 = 40
-	DefaultMinSiteZoom  uint32 = 8
+	DefaultMapSiteLimit uint32 = 100
+	DefaultMinSiteZoom  uint32 = 6
 )
 
 // Purpose values used by the fixtures. Query treats purpose as an ordinary string.
@@ -32,8 +32,8 @@ type Point struct {
 	Lon, Lat float64
 }
 
-// Site is one place in an organization shard. Shown and Exact are both stored.
-// Open inserts each box into its own R-tree.
+// Site is one place in an organization shard. OrganizationID is required.
+// Shown and Exact are both stored. Open inserts each box into its own R-tree.
 type Site struct {
 	ID               string
 	Name             string
@@ -54,6 +54,7 @@ type Interval struct {
 }
 
 // Station holds deployment intervals for station-attached datastreams.
+// OrganizationID is required and must match the builder.
 type Station struct {
 	ID             string
 	Name           string
@@ -62,7 +63,8 @@ type Station struct {
 }
 
 // Datastream is one searchable row. Set StationID, or set Intervals for a
-// site-attached datastream, not both. Doc ids are assigned in AddDatastream order.
+// site-attached datastream, not both. OrganizationID is required and must match
+// the builder. Doc ids are assigned in AddDatastream order.
 type Datastream struct {
 	ID             string
 	Name           string
@@ -160,7 +162,8 @@ type Hit struct {
 
 // Result is the map layer for one shard, or for Combine.
 // Candidates is the filtered site list before the cluster/site switch.
-// Combine uses it. Site and measurement counts are set only for KindSites.
+// Combine uses it. Measurement counts are always set. Site counts are set
+// only for KindSites.
 type Result struct {
 	Kind              Kind
 	Clusters          []Cluster

@@ -13,7 +13,7 @@ func TestDependencies(t *testing.T) {
 	}
 	for _, line := range strings.Split(string(out), "\n") {
 		lower := strings.ToLower(line)
-		for _, bad := range []string{"nats", "minio", "protobuf", "mongo"} {
+		for _, bad := range []string{"nats", "minio", "protobuf", "mongo", "compress/gzip"} {
 			if strings.Contains(lower, bad) {
 				t.Fatalf("forbidden dependency %q in %s", bad, line)
 			}

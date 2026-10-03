@@ -1,10 +1,14 @@
 # dendra-search
 
-Go library for [Dendra](https://dendra.science) datastream discovery. Faceted filters, a map viewport, and deployment intervals share one immutable index per organization.
+[dendra-search](https://github.com/dendrascience/dendra-search) is the Go library [Dendra](https://dendra.science) uses for datastream discovery. A host passes in the sites, stations, and datastreams for one organization, and the library builds a single immutable index that can answer a faceted filter, a map viewport, and a deployment-interval query. What you get back is bytes. Serving those bytes, and deciding who may download them, belongs to the host.
 
-A host feeds sites, stations, and datastreams into a `Builder`. `Finish` returns a byte slice. `Open` loads those bytes into a read-only `Shard` and builds the shown and exact R-trees. `Query` answers from that shard. `Combine` merges one result per organization when a caller looks across several orgs.
+You fill a `Builder` in a fixed order: sites, then stations, then datastreams. `Finish` serializes that index into a shard, which is the byte slice you store. Later, `Open` loads the slice and builds two R-trees, one on the shown location and one on the exact location. `Query` reads a single shard. A search that covers more than one organization queries each shard and passes the results to `Combine`, which merges them and clusters the sites once.
 
-This is the search algebra only. It does not serve traffic, talk to an object store, import protobuf, or decide who may see a site. The caller names the geometry (`shown` or `exact`) and whether member-only datastreams are included. Storing shards, pinning organizations, and enforcing membership are host concerns.
+The same filled builder can produce two shards, and you will usually want both. `Finish(FinishPrivate)` writes the full shard: every datastream, with each site's shown box and exact box stored as you added them. `Finish(FinishPublic)` writes the public shard from those same rows. Only datastreams marked `public_ok` are kept, so a member-only datastream is simply not in the file, and a site appears only when at least one public datastream uses it. The exact box and exact point written there are copies of the shown values. Anyone who can read the file can read every coordinate in it, so the public shard has no true coordinates of its own. Doc ids in that shard are assigned again, following the order the public rows were added.
+
+`Finish` does not throw the index away. After the private shard is written you can call `Finish(FinishPublic)` on the same builder, or the other way around, and a repeated call with the same mode returns the same bytes. You can upload the first buffer and drop it before the second call, which keeps you from holding both files at once. Adding another site, station, or datastream after the first `Finish` returns `ErrFinished`. Drop the builder once you have the slices you need.
+
+On each query you name the geometry, `shown` or `exact`, and whether member-only datastreams should be included. The library will not make that choice for you. It also does not serve traffic, talk to an object store, import protobuf, or gzip. Storing shards, pinning organizations, and enforcing membership stay with the host.
 
 ## Install
 
@@ -12,30 +16,46 @@ This is the search algebra only. It does not serve traffic, talk to an object st
 go get github.com/dendrascience/dendra-search
 ```
 
-Requires Go 1.22+. Dependencies are portable Roaring bitmaps (`github.com/RoaringBitmap/roaring`) and an R-tree (`github.com/tidwall/rtree`). Build and test with `CGO_ENABLED=0`.
+The module needs Go 1.22 or newer. Its dependencies are portable Roaring bitmaps (`github.com/RoaringBitmap/roaring`) and an R-tree (`github.com/tidwall/rtree`). Build and test with `CGO_ENABLED=0`.
 
-## How it works
+## How a shard is built
 
-Each organization is one shard. Feed sites first, then stations, then datastreams. Sites store both a shown box and an exact box (plus digest points used for clustering). A datastream either names a station, or carries its own deployment intervals when it is attached to a site directly. Intervals are half-open Unix milliseconds; `EndsBefore == 0` means the deployment is still open. Pass non-overlapping intervals. The builder rejects overlaps; it does not merge them.
+Each organization is one shard. Sites go in first, then stations, then datastreams, and the builder rejects a row that arrives out of that order. A site stores a shown box and an exact box, along with the digest points clustering uses. A datastream either names a station, whose deployment intervals were added with that station, or it carries its own intervals when it is attached to a site directly. An interval is a half-open range of Unix milliseconds, `[BeginsAt, EndsBefore)`. `EndsBefore == 0` means the deployment is still open. Pass intervals that do not overlap. The builder returns an error if they do, and it will not merge them for you.
 
-`AddDatastream` records the row into the posting lists (purpose, measurement, `public_ok` / `member_ok`, open-site), the interval table, and the forward rows. The datastream struct is not kept. `Finish` writes that index into one blob. `Open` unmarshals that blob and inserts each site's shown and exact boxes into R-trees. `Query` intersects the predicates you set, allocates temporary bitmaps only, and is safe for concurrent readers on the same shard.
+`AddDatastream` copies what it needs into the index and then drops the struct you passed. The row is recorded in the posting lists (purpose, measurement, `public_ok`, `member_ok`, and the site of the open deployment), in the interval table, and in the forward rows that `Query` later turns into hits. `Finish` writes that index out as one blob and leaves the in-memory copy where it is, which is what makes the second `Finish` possible. `Open` reads the blob and inserts each site's shown box and exact box into its own R-tree. The trees are not stored in the file. `Query` intersects the predicates you set, allocates temporary bitmaps only, and is safe for concurrent readers on the same shard.
 
-Empty query fields are left out of the predicate. An empty measurement list means all measurements; the same is true for sites, purpose, and a nil viewport. `IncludeMemberOnly` false uses `public_ok`; true uses `public_ok ∪ member_ok`.
+Leave a query field empty and that predicate is skipped. An empty measurement list means every measurement, and the same is true for sites, for purpose, and for a nil viewport. `IncludeMemberOnly` set to false keeps the `public_ok` rows. Set to true, it uses the union of `public_ok` and `member_ok`. On a public shard that union cannot surface a member-only datastream, because the row was never written.
 
-Zoom 0 is the world. A zero `MapSiteLimit` means 40, and a zero `MinSiteZoom` means 8. Above that site limit, or below that zoom, the result is clusters and the facet arrays are empty. Otherwise it is one marker per site, disjunctive counts, and an optional page of hits.
+Zoom 0 is the whole world. A zero `MapSiteLimit` is treated as 100, and a zero `MinSiteZoom` is treated as 6. When the matching sites are above that limit, or the zoom is below that floor, the result is clusters and measurement counts, and the per-site counts stay empty. Otherwise you get one marker per site, both count arrays, and an optional page of hits.
 
-When looking across organizations, query each shard, then `Combine`. That merges results and clusters the sites once. Do not hold every shard's query open across the others if the host is pinning one organization at a time.
+Across organizations, query each shard on its own and then call `Combine`. Clustering happens in that merge, so you should not cluster inside the per-shard query and again afterwards. If the host pins one organization at a time, do not hold every shard's query open across the others.
 
-Details: [docs/query.md](docs/query.md). Byte layout (for debugging a bad blob): [docs/format.md](docs/format.md).
+The query rules are written out in [docs/query.md](docs/query.md). The byte layout, which you want when a blob will not open, is in [docs/format.md](docs/format.md).
+
+## The public container
+
+Once each organization has a public shard, those shards can travel as one object. `WriteContainer` packs them into a single uncompressed frame, and `ParseContainer` takes the frame apart. The first four bytes are `DSPC`. That string is file magic, the same kind of marker as `DS01` at the start of a shard, and the letters do not stand for a longer name.
+
+Inside the frame, each chunk is an organization id, the etag of that organization's public shard, and the shard bytes themselves. The bytes are copied through as they were given. The library does not look for a `DS01` header inside them, and it does not sort the organizations, so the order you pass is the order that gets stored.
+
+The etag is there for the next time the frame is assembled. Parse the frame, replace the chunks whose etag changed, and write it again. `Open` never looks at the etag. Fetching the chunks is the caller's job, and so is compression. If a host stores a gzip copy for download, it compresses outside this package and records that fact on the version file below. A browser `fetch` of an object served with `Content-Encoding: gzip` has already decompressed the body by the time your code sees it, so you call `ParseContainer` on those bytes and do not gunzip them again.
+
+## The version file
+
+`VersionFile` is the JSON object stored as `current.json` beside a shard or beside a container. A reader follows that file and then fetches the object it names, rather than listing a directory and guessing which bin is current. The fields that do the naming are the object key, the etag, the size, and `built_at`.
+
+A pointer for a private shard can also carry `doc_count` and the organization flags `is_enabled`, `is_hidden`, and `public_ok`. Those fields are pointers in the struct, so leaving them unset omits them from the JSON. A container pointer leaves them unset. `keep` lists older object keys that should be spared until `until`, which is how a reader who already resolved the previous pointer can finish that download. `encoding` is omitted when it is empty, and empty means the object is the raw bytes from `Finish` or `WriteContainer`. Setting it to `gzip` only labels the public download. `Marshal` writes JSON and does not compress.
 
 ## Usage
+
+A single organization looks like this. `Finish` returns the shard bytes and the number of datastreams written.
 
 ```go
 b := search.NewBuilder()
 err = b.AddSite(site)
 err = b.AddStation(station)
 err = b.AddDatastream(datastream)
-blob, n, err := b.Finish()
+blob, n, err := b.Finish(search.FinishPrivate)
 
 shard, err := search.Open(blob)
 res, err := shard.Query(search.Query{
@@ -46,7 +66,9 @@ res, err := shard.Query(search.Query{
 })
 ```
 
-`AddSites`, `AddStations`, and `AddDatastreams` loop the singular methods. A host that already has a page should call `AddSite` (or station, or datastream) once per row:
+Call `Finish(search.FinishPublic)` on that same builder when you also want the public shard. It returns its own byte slice and its own doc count.
+
+`AddSites`, `AddStations`, and `AddDatastreams` loop the singular methods. If you already have a page from the database, call `AddSite` (or the station or datastream method) once per row and skip rows the index should not contain:
 
 ```go
 for _, row := range sitePage {
@@ -62,7 +84,7 @@ for _, row := range sitePage {
 }
 ```
 
-Across organizations:
+Several organizations are queried separately and then merged:
 
 ```go
 parts := make([]search.Result, len(shards))
@@ -80,7 +102,7 @@ go run ./examples/bench
 ./examples/wasm/build.sh examples/map/search.wasm && go run ./examples/map
 ```
 
-The map page serves at http://127.0.0.1:8080. See [examples/README.md](examples/README.md) for demo, bench, wasm, and map notes.
+`demo` prints a private query and then a public one from the same builder, including a container round trip and a version file. `bench` runs the fixture matrix. The map page is a static Explore-style view over those fixtures, and it serves at http://127.0.0.1:8080. Notes for each program are in [examples/README.md](examples/README.md).
 
 ## Development
 
@@ -89,7 +111,7 @@ CGO_ENABLED=0 go test ./...
 go run ./examples/bench    # writes BENCHMARKS.md
 ```
 
-Tests need no network. Fixtures and the benchmark cases are described in [docs/fixtures.md](docs/fixtures.md). Today-scale limits (10 ms per query, 32 MiB heap for `today-catalog`) are enforced by `go test`. `Finish` duration is recorded in `BENCHMARKS.md` and is not a pass/fail number; large-scale numbers sit next to 100 ms and 512 MB.
+Tests need no network. The fixtures and the benchmark cases are described in [docs/fixtures.md](docs/fixtures.md). `go test` enforces the today-scale limits, 10 ms per query and 32 MiB of heap for `today-catalog`. How long `Finish` takes is written to `BENCHMARKS.md` and is not a pass or fail. The large-scale numbers are recorded there next to 100 ms and 512 MB.
 
 ## License
 

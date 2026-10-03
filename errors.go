@@ -7,7 +7,7 @@ var (
 	// Sites come first, then stations, then datastreams.
 	ErrOrder = errors.New("search: sites, then stations, then datastreams")
 
-	// ErrFinished means the builder has already returned its bytes.
+	// ErrFinished means Add was called after Finish. Finish itself may be called again.
 	ErrFinished = errors.New("search: builder is finished")
 
 	// ErrDuplicate means a site, station, or datastream id was added twice.
@@ -39,6 +39,10 @@ var (
 	// ErrFormat means the bytes are not a shard this package can open.
 	ErrFormat = errors.New("search: invalid shard")
 
-	// ErrInvalid means a required id is empty, or the receiver is nil.
+	// ErrContainer means the bytes are not a DSPC frame this package can parse.
+	ErrContainer = errors.New("search: invalid container")
+
+	// ErrInvalid means a required id is empty, related records name different
+	// organizations, or the receiver is nil.
 	ErrInvalid = errors.New("search: invalid value")
 )
