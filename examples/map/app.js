@@ -26,9 +26,22 @@ const measurementLabels = {
 
 const purposes = new Set(["", "ReadytoUse", "Raw", "StatusInformation"]);
 
+// Local stand-in for ListGroups. The index stores these ids and does not
+// supply the names.
+const groupCatalog = [
+  { id: "field", name: "Field crew" },
+  { id: "lab", name: "Lab" },
+  { id: "volunteers", name: "Volunteers" },
+  { id: "internal", name: "Internal" },
+];
+
 const state = {
   purpose: "ReadytoUse",
   orgs: new Set(),
+  groups: new Set(),
+  orgFilter: "",
+  groupFilter: "",
+  groupsByOrg: {},
   measurements: new Set(),
   sites: new Set(),
   cart: new Map(),
@@ -60,6 +73,7 @@ function parseURL() {
     state.purpose = params.get("purpose");
   }
   splitInto(state.orgs, params.get("org"));
+  splitInto(state.groups, params.get("group"));
   splitInto(state.measurements, params.get("meas"));
   splitInto(state.sites, params.get("site"));
   const raw = params.get("bbox");
@@ -122,6 +136,7 @@ function writeURL() {
   params.set("z", String(Math.max(0, Math.round(map.getZoom()))));
   params.set("purpose", state.purpose);
   if (state.orgs.size) params.set("org", [...state.orgs].join(","));
+  if (state.groups.size) params.set("group", [...state.groups].join(","));
   if (state.measurements.size) params.set("meas", [...state.measurements].join(","));
   if (state.sites.size) params.set("site", [...state.sites].join(","));
   history.replaceState(null, "", `?${params.toString()}`);
@@ -165,7 +180,17 @@ function bindControls() {
   }
   $("member").addEventListener("change", (ev) => {
     state.includeMemberOnly = ev.target.checked;
+    loadGroups();
+    renderPicker();
     refresh();
+  });
+  $("org-filter").addEventListener("input", (ev) => {
+    state.orgFilter = ev.target.value;
+    renderPicker();
+  });
+  $("group-filter").addEventListener("input", (ev) => {
+    state.groupFilter = ev.target.value;
+    renderPicker();
   });
   $("purpose").addEventListener("change", (ev) => {
     state.purpose = ev.target.value;
@@ -243,7 +268,12 @@ function rebuild() {
     for (const id of state.orgs) {
       if (!ids.has(id)) state.orgs.delete(id);
     }
-    renderOrgs();
+    const groupIDs = new Set(groupCatalog.map((row) => row.id));
+    for (const id of state.groups) {
+      if (!groupIDs.has(id)) state.groups.delete(id);
+    }
+    loadGroups();
+    renderPicker();
     renderCart();
     runQuery();
   }, 0);
@@ -258,6 +288,7 @@ function runQuery() {
     measurements: [...state.measurements],
     site_ids: [...state.sites],
     organization_ids: [...state.orgs],
+    group_ids: [...state.groups],
     viewport: viewportFromMap(),
     geometry: state.geometry,
     zoom: Math.max(0, Math.round(map.getZoom())),
@@ -402,25 +433,84 @@ function fitBox(box, reduce) {
   );
 }
 
-// renderOrgs lists the organizations from the build. None pressed means
-// every organization. A pressed chip is sent on the next query.
-function renderOrgs() {
-  const list = $("org-list");
-  list.replaceChildren();
+// loadGroups asks each loaded shard which group ids are in play. The picker
+// does not depend on the map viewport, so a pan does not call this.
+function loadGroups() {
+  if (!state.built || typeof searchGroupIDs !== "function") return;
+  let res;
+  try {
+    res = JSON.parse(searchGroupIDs(JSON.stringify({
+      include_member_only: state.includeMemberOnly,
+    })));
+  } catch (err) {
+    setStatus(String(err));
+    return;
+  }
+  if (res.error) {
+    setStatus(res.error);
+    return;
+  }
+  state.groupsByOrg = res.groups_by_org || {};
+}
+
+function filteredCatalog(catalog, text) {
+  const q = text.trim().toLowerCase();
+  if (!q) return catalog;
+  return catalog.filter((row) => row.name.toLowerCase().includes(q));
+}
+
+// renderPicker asks ReducePicker which rows to show. The page holds the
+// catalogs, the text filters, and the checks. It does not decide relevance.
+function renderPicker() {
+  if (typeof searchReducePicker !== "function") return;
   const orgs = state.built ? state.built.orgs : [];
-  $("org-hint").hidden = state.orgs.size > 0;
-  for (const org of orgs) {
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "chip";
-    btn.textContent = org.name;
-    btn.setAttribute("aria-pressed", state.orgs.has(org.id) ? "true" : "false");
-    btn.addEventListener("click", () => {
-      toggle(state.orgs, org.id);
-      renderOrgs();
+  let reduced;
+  try {
+    reduced = JSON.parse(searchReducePicker(JSON.stringify({
+      orgs: filteredCatalog(orgs, state.orgFilter),
+      groups: filteredCatalog(groupCatalog, state.groupFilter),
+      checked_orgs: [...state.orgs],
+      checked_groups: [...state.groups],
+      groups_by_org: state.groupsByOrg,
+    })));
+  } catch (err) {
+    setStatus(String(err));
+    return;
+  }
+  if (reduced.error) {
+    setStatus(reduced.error);
+    return;
+  }
+  drawPicker($("org-list"), reduced.orgs || [], state.orgs);
+  drawPicker($("group-list"), reduced.groups || [], state.groups);
+}
+
+function drawPicker(list, rows, set) {
+  list.replaceChildren();
+  if (rows.length === 0) {
+    const p = document.createElement("p");
+    p.className = "empty";
+    p.textContent = "None";
+    list.append(p);
+    return;
+  }
+  for (const row of rows) {
+    const label = document.createElement("label");
+    label.className = "picker-row";
+    if (row.grey) label.classList.add("is-grey");
+    const box = document.createElement("input");
+    box.type = "checkbox";
+    box.checked = set.has(row.id);
+    box.addEventListener("change", () => {
+      if (box.checked) set.add(row.id);
+      else set.delete(row.id);
+      renderPicker();
       refresh();
     });
-    list.append(btn);
+    const name = document.createElement("span");
+    name.textContent = row.name;
+    label.append(box, name);
+    list.append(label);
   }
 }
 

@@ -8,7 +8,7 @@ Integers are little-endian. A string is a `uint32` byte length followed by the b
 
 ```text
 "DS01"                 4 bytes
-version                uint16 = 1
+version                uint16 = 2
 docCount               uint32
 siteCount              uint32
 site records           siteCount times
@@ -20,6 +20,7 @@ measurement postings
 public_ok              one bitmap
 member_ok              one bitmap
 open-site postings
+open-group postings
 ```
 
 Each site record:
@@ -39,6 +40,7 @@ doc id          uint32
 site index      uint32   // index into the site records
 begins_at       int64    // Unix milliseconds
 ends_before     int64    // 0 means open
+group id        string   // empty means no group
 ```
 
 Each forward row, in doc id order:
@@ -50,9 +52,9 @@ open site index    uint32
 
 Station name is copied from the station. A site-attached datastream leaves it empty. Site name is not on this row.
 
-A posting section is a `uint32` count, then that many pairs of string key and bitmap. Keys are sorted. Purpose and measurement use the caller's strings. Open-site keys are site ids, and those bitmaps hold the datastreams whose open deployment is that site. Window queries do not use those bitmaps; they scan the interval table.
+A posting section is a `uint32` count, then that many pairs of string key and bitmap. Keys are sorted. Purpose and measurement use the caller's strings. Open-site keys are site ids, and those bitmaps hold the datastreams whose open deployment is that site. Open-group keys are group ids, and those bitmaps hold the datastreams whose open interval carries that id. Empty group ids are omitted. Window queries do not use the open-site or open-group bitmaps; they scan the interval table. The open-group bitmaps are a filter accelerator, not a counted facet.
 
-`Open` rejects a bad magic, a version other than 1, a truncated buffer, or trailing bytes.
+`Open` rejects a bad magic, a version other than 2, a truncated buffer, or trailing bytes.
 
 `Finish(FinishPrivate)` writes the layout above. `Finish(FinishPublic)` writes a second `DS01` blob from the same index. Exact boxes and exact points in that blob are copies of the shown values. Only `public_ok` datastreams are stored, and a site is stored only when one of those datastreams uses it. Doc ids and site indexes in the public blob are renumbered. Member-only datastreams are absent.
 

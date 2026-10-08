@@ -11,7 +11,7 @@ go run ./examples/bench
 
 ## demo
 
-A few sites in memory. One query at zoom 2 returns clusters and measurement counts. One at zoom 11 returns sites. A member-only datastream is visible only when `IncludeMemberOnly` is set. The same builder then writes a public shard: that member row is gone, and the exact point matches shown. The public bytes are framed with `WriteContainer`, and a `VersionFile` is marshaled with `encoding: gzip`. Useful as a first read of the Go API before you open fixtures or the map page.
+A few sites in memory. One query at zoom 2 returns clusters and measurement counts. One at zoom 11 returns sites. A member-only datastream is visible only when `IncludeMemberOnly` is set. The same builder then writes a public shard: that member row is gone, and the exact point matches shown. The public bytes are framed with `WriteContainer`, and a `VersionFile` is marshaled with `encoding: gzip`. It then builds a north shard and a south shard, prints `GroupIDs` and the picker rows, and checks a volunteers query plus the meadow and lab window. The program exits non-zero if meadow and lab match together. Useful as a first read of the Go API before you open fixtures or the map page.
 
 ## bench
 

@@ -23,6 +23,12 @@ JSON.parse(globalThis.searchQuery(JSON.stringify({
   zoom: 2,
   viewport: {west: -180, south: -90, east: 180, north: 90}
 })))
+JSON.parse(globalThis.searchGroupIDs('{}'))
+JSON.parse(globalThis.searchReducePicker(JSON.stringify({
+  orgs: [{id: 'org-000', name: 'Org 000'}],
+  groups: [{id: 'field', name: 'Field crew'}],
+  groups_by_org: {'org-000': ['field']}
+})))
 ```
 
 `searchBuild(specJSON)` replaces the shards held in the module. `specJSON` is
@@ -36,7 +42,7 @@ layout leaves `areas` empty. On error the previous shards are kept.
 
 `searchQuery(queryJSON)` reads those shards. `organization_ids` chooses which
 ones; an empty list is every org from the build. The other fields match `Query`
-(`purpose`, `measurements`, `site_ids`, `viewport`, `geometry`, `zoom`,
+(`purpose`, `measurements`, `site_ids`, `group_ids`, `viewport`, `geometry`, `zoom`,
 `include_member_only`, `map_site_limit`, `min_site_zoom`, `page_size`,
 `page_after`). `geometry` is `"shown"` or `"exact"`.
 
@@ -47,6 +53,15 @@ for both kinds. `site_counts` is set only for `"sites"`. Candidate sites used on
 merge shards are left out. `paged` is true for a single shard, and
 `next_page_after` is set only then. Several shards are concatenated with `Combine`
 and have no cross-org cursor.
+
+`searchGroupIDs` calls `GroupIDs` on every loaded organization. The body is
+`begins_at`, `ends_before`, and `include_member_only`. Both time fields zero,
+or an empty body, is the open deployment. The reply is
+`{groups_by_org: {org id: [group id]}}`.
+
+`searchReducePicker` calls `ReducePicker`. The body is `orgs` and `groups`
+(`[{id, name}]`, already text-filtered), `checked_orgs`, `checked_groups`, and
+`groups_by_org`. The reply is `{orgs, groups}`, each row `{id, name, grey}`.
 
 Set `globalThis.__searchOnReady` before `go.run`. The module calls it once the
 functions exist, then waits.

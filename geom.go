@@ -69,13 +69,17 @@ func validateQuery(q Query) error {
 			return err
 		}
 	}
-	if (q.BeginsAt == 0) != (q.EndsBefore == 0) {
+	return validateWindow(q.BeginsAt, q.EndsBefore)
+}
+
+func validateWindow(beginsAt, endsBefore int64) error {
+	if (beginsAt == 0) != (endsBefore == 0) {
 		return ErrWindow
 	}
-	if q.BeginsAt < 0 || q.EndsBefore < 0 {
+	if beginsAt < 0 || endsBefore < 0 {
 		return ErrWindow
 	}
-	if q.BeginsAt != 0 && q.EndsBefore <= q.BeginsAt {
+	if beginsAt != 0 && endsBefore <= beginsAt {
 		return ErrWindow
 	}
 	return nil

@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	formatVersion uint16 = 1
+	formatVersion uint16 = 2
 	maxField             = 64 << 20
 )
 
@@ -21,6 +21,7 @@ type storedInterval struct {
 	site   int
 	begins int64
 	ends   int64
+	group  string
 }
 
 type forwardRow struct {
@@ -42,6 +43,7 @@ type shardImage struct {
 	purpose     map[string]*roaring.Bitmap
 	measurement map[string]*roaring.Bitmap
 	currentSite map[string]*roaring.Bitmap
+	openGroup   map[string]*roaring.Bitmap
 	publicOK    *roaring.Bitmap
 	memberOK    *roaring.Bitmap
 }
@@ -69,6 +71,7 @@ func writeShard(img shardImage) ([]byte, error) {
 		e.u32(uint32(iv.site))
 		e.i64(iv.begins)
 		e.i64(iv.ends)
+		e.str(iv.group)
 	}
 	for _, row := range img.forward {
 		e.str(row.datastreamID)
@@ -94,6 +97,9 @@ func writeShard(img shardImage) ([]byte, error) {
 		return nil, err
 	}
 	if err := e.bitmaps(img.currentSite); err != nil {
+		return nil, err
+	}
+	if err := e.bitmaps(img.openGroup); err != nil {
 		return nil, err
 	}
 	return e.b, nil
@@ -175,10 +181,18 @@ func writePublicShard(img shardImage) ([]byte, uint32, error) {
 		e.u32(uint32(site))
 		e.i64(iv.begins)
 		e.i64(iv.ends)
+		e.str(iv.group)
+	}
+	openGroupByDoc := make([]string, len(img.forward))
+	for _, iv := range img.intervals {
+		if iv.ends == 0 && int(iv.doc) < len(openGroupByDoc) {
+			openGroupByDoc[iv.doc] = iv.group
+		}
 	}
 	purpose := map[string]*roaring.Bitmap{}
 	measurement := map[string]*roaring.Bitmap{}
 	currentSite := map[string]*roaring.Bitmap{}
+	openGroup := map[string]*roaring.Bitmap{}
 	memberOK := roaring.New()
 	for i, row := range img.forward {
 		if !isPublic[i] {
@@ -207,6 +221,9 @@ func writePublicShard(img shardImage) ([]byte, uint32, error) {
 			memberOK.Add(doc)
 		}
 		addPosting(currentSite, img.sites[row.openSite].ID, doc)
+		if g := openGroupByDoc[i]; g != "" {
+			addPosting(openGroup, g, doc)
+		}
 	}
 	publicOK := roaring.New()
 	if publicDocs > 0 {
@@ -225,6 +242,9 @@ func writePublicShard(img shardImage) ([]byte, uint32, error) {
 		return nil, 0, err
 	}
 	if err := e.bitmaps(currentSite); err != nil {
+		return nil, 0, err
+	}
+	if err := e.bitmaps(openGroup); err != nil {
 		return nil, 0, err
 	}
 	return e.b, publicDocs, nil
@@ -255,6 +275,7 @@ func readShard(raw []byte) (*Shard, error) {
 		purpose:     map[string]*roaring.Bitmap{},
 		measurement: map[string]*roaring.Bitmap{},
 		currentSite: map[string]*roaring.Bitmap{},
+		openGroup:   map[string]*roaring.Bitmap{},
 		docCount:    docCount,
 	}
 	for i := range s.sites {
@@ -299,6 +320,10 @@ func readShard(raw []byte) (*Shard, error) {
 		return nil, err
 	}
 	s.currentSite, err = d.bitmapMap()
+	if err != nil {
+		return nil, err
+	}
+	s.openGroup, err = d.bitmapMap()
 	if err != nil {
 		return nil, err
 	}
@@ -530,10 +555,14 @@ func (d *dec) interval(docCount, siteCount uint32) (storedInterval, error) {
 	if err != nil {
 		return storedInterval{}, err
 	}
+	group, err := d.str()
+	if err != nil {
+		return storedInterval{}, err
+	}
 	if doc >= docCount || site >= siteCount {
 		return storedInterval{}, ErrFormat
 	}
-	return storedInterval{doc: doc, site: int(site), begins: begins, ends: ends}, nil
+	return storedInterval{doc: doc, site: int(site), begins: begins, ends: ends, group: group}, nil
 }
 
 func (d *dec) forward(siteCount uint32) (forwardRow, error) {

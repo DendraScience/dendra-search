@@ -20,17 +20,17 @@ The module needs Go 1.22 or newer. Its dependencies are portable Roaring bitmaps
 
 ## How a shard is built
 
-Each organization is one shard. Sites go in first, then stations, then datastreams, and the builder rejects a row that arrives out of that order. A site stores a shown box and an exact box, along with the digest points clustering uses. A datastream either names a station, whose deployment intervals were added with that station, or it carries its own intervals when it is attached to a site directly. An interval is a half-open range of Unix milliseconds, `[BeginsAt, EndsBefore)`. `EndsBefore == 0` means the deployment is still open. Pass intervals that do not overlap. The builder returns an error if they do, and it will not merge them for you.
+Each organization is one shard. Sites go in first, then stations, then datastreams, and the builder rejects a row that arrives out of that order. A site stores a shown box and an exact box, along with the digest points clustering uses. A datastream either names a station, whose deployment intervals were added with that station, or it carries its own intervals when it is attached to a site directly. An interval is a half-open range of Unix milliseconds, `[BeginsAt, EndsBefore)`. `EndsBefore == 0` means the deployment is still open. Pass intervals that do not overlap. The builder returns an error if they do, and it will not merge them for you. An interval may name a group id. Empty means that interval has no group. The shard stores the id and does not store the name.
 
 `AddDatastream` copies what it needs into the index and then drops the struct you passed. The row is recorded in the posting lists (purpose, measurement, `public_ok`, `member_ok`, and the site of the open deployment), in the interval table, and in the forward rows that `Query` later turns into hits. `Finish` writes that index out as one blob and leaves the in-memory copy where it is, which is what makes the second `Finish` possible. `Open` reads the blob and inserts each site's shown box and exact box into its own R-tree. The trees are not stored in the file. `Query` intersects the predicates you set, allocates temporary bitmaps only, and is safe for concurrent readers on the same shard.
 
-Leave a query field empty and that predicate is skipped. An empty measurement list means every measurement, and the same is true for sites, for purpose, and for a nil viewport. `IncludeMemberOnly` set to false keeps the `public_ok` rows. Set to true, it uses the union of `public_ok` and `member_ok`. On a public shard that union cannot surface a member-only datastream, because the row was never written.
+Leave a query field empty and that predicate is skipped. An empty measurement list means every measurement, and the same is true for sites, for groups, for purpose, and for a nil viewport. An empty group list matches intervals that have no group. Several group ids are a union, and the group is tested on the same interval as the site and the viewport. `GroupIDs` lists the group ids on the intervals in play. `ReducePicker` turns organization and group catalogs, the checked ids, and those lists into the picker rows. The picker rules are in [docs/groups.md](docs/groups.md). `IncludeMemberOnly` set to false keeps the `public_ok` rows. Set to true, it uses the union of `public_ok` and `member_ok`. On a public shard that union cannot surface a member-only datastream, because the row was never written.
 
 Zoom 0 is the whole world. A zero `MapSiteLimit` is treated as 100, and a zero `MinSiteZoom` is treated as 6. When the matching sites are above that limit, or the zoom is below that floor, the result is clusters and measurement counts, and the per-site counts stay empty. Otherwise you get one marker per site, both count arrays, and an optional page of hits.
 
 Across organizations, query each shard on its own and then call `Combine`. Clustering happens in that merge, so you should not cluster inside the per-shard query and again afterwards. If the host pins one organization at a time, do not hold every shard's query open across the others.
 
-The query rules are written out in [docs/query.md](docs/query.md). The byte layout, which you want when a blob will not open, is in [docs/format.md](docs/format.md).
+The query rules are written out in [docs/query.md](docs/query.md). Groups are in [docs/groups.md](docs/groups.md). The byte layout, which you want when a blob will not open, is in [docs/format.md](docs/format.md).
 
 ## The public container
 
@@ -102,7 +102,7 @@ go run ./examples/bench
 ./examples/wasm/build.sh examples/map/search.wasm && go run ./examples/map
 ```
 
-`demo` prints a private query and then a public one from the same builder, including a container round trip and a version file. `bench` runs the fixture matrix. The map page is a static Explore-style view over those fixtures, and it serves at http://127.0.0.1:8080. Notes for each program are in [examples/README.md](examples/README.md).
+`demo` prints a private query and then a public one from the same builder, including a container round trip and a version file, then the north and south group picker. `bench` runs the fixture matrix. The map page is a static Explore-style view over those fixtures, and it serves at http://127.0.0.1:8080. Notes for each program are in [examples/README.md](examples/README.md).
 
 ## Development
 

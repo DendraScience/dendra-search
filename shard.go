@@ -15,6 +15,7 @@ type Shard struct {
 	purpose     map[string]*roaring.Bitmap
 	measurement map[string]*roaring.Bitmap
 	currentSite map[string]*roaring.Bitmap
+	openGroup   map[string]*roaring.Bitmap
 	shown       rtree.RTreeG[int]
 	exact       rtree.RTreeG[int]
 	docCount    uint32

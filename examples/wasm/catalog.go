@@ -146,11 +146,12 @@ func demoCatalog(spec search.Spec) (search.Fixture, []areaJSON, error) {
 						SiteID:     ps.site.ID,
 						BeginsAt:   demoEpoch,
 						EndsBefore: 0,
+						GroupID:    demoStationGroup(org, s),
 					}},
 				})
 				for k := 0; k < n; k++ {
 					meas := search.Measurement(local)
-					streams = append(streams, search.Datastream{
+					ds := search.Datastream{
 						ID:             fmt.Sprintf("datastream-%06d", dsCursor),
 						Name:           measLabel(meas),
 						OrganizationID: orgID,
@@ -160,7 +161,19 @@ func demoCatalog(spec search.Spec) (search.Fixture, []areaJSON, error) {
 						Purpose:        demoPurpose(dsCursor),
 						PublicOK:       dsCursor%10 != 0,
 						MemberOK:       true,
-					})
+					}
+					// Member-only rows carry internal on their own interval.
+					// A shared station interval would publish that group to guests.
+					if dsCursor%10 == 0 {
+						ds.StationID = ""
+						ds.Intervals = []search.Interval{{
+							SiteID:     ps.site.ID,
+							BeginsAt:   demoEpoch,
+							EndsBefore: 0,
+							GroupID:    "internal",
+						}}
+					}
+					streams = append(streams, ds)
 					local++
 					dsCursor++
 				}
@@ -199,6 +212,28 @@ func measLabel(meas string) string {
 		return meas
 	}
 	return measLabels[n-1]
+}
+
+// demoStationGroup is the group on a shared logger. Organizations take turns
+// at one public group, and every fourth organization also names a second, so
+// checking a group drops the organizations that do not reference it. A few
+// sites have no group. internal is not used here.
+func demoStationGroup(org, siteInOrg int) string {
+	if siteInOrg%11 == 0 {
+		return ""
+	}
+	primary := []string{"field", "lab", "volunteers"}[org%3]
+	if org%4 != 3 || siteInOrg%2 == 0 {
+		return primary
+	}
+	switch primary {
+	case "field":
+		return "lab"
+	case "lab":
+		return "volunteers"
+	default:
+		return "field"
+	}
 }
 
 func demoPurpose(i int) string {

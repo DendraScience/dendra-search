@@ -9,6 +9,7 @@ Empty fields are left out of the predicate.
 | `Purpose` | Every purpose. This is a filter, not a counted facet. |
 | `Measurements` | Every measurement. Several values are a union. |
 | `SiteIDs` | Every site in play. Several values are a union. |
+| `GroupIDs` | Every datastream, including intervals with no group. Several values are a union. |
 | `BeginsAt` and `EndsBefore` | The open deployment (`EndsBefore == 0` on the interval). Set both, or neither. |
 | `Viewport` | No geographic predicate. Clustering still uses `Geometry`. |
 | `IncludeMemberOnly` | `public_ok` only. True uses `public_ok ∪ member_ok`. |
@@ -25,13 +26,27 @@ Disjunctive counts omit one dimension:
 - A site count is the number of hits at that site when the site filter is removed.
 - A measurement count is the number of hits for that measurement when the measurement filter is removed.
 
-Purpose stays in both. Measurement counts are returned for both layers, including zeros for measurements that exist in the shard, so selecting one measurement does not hide the others. Site counts are returned only when the layer is sites. Selected sites are listed even when their count is zero.
+Purpose stays in both. A group filter stays in both, the way purpose does. Measurement counts are returned for both layers, including zeros for measurements that exist in the shard, so selecting one measurement does not hide the others. Site counts are returned only when the layer is sites. Selected sites are listed even when their count is zero. There is no group count. `Combine` does not sum one.
 
 ## Time
 
 Intervals are half-open `[BeginsAt, EndsBefore)` in Unix milliseconds. `EndsBefore == 0` means open. Each datastream has exactly one open interval. Intervals must already be non-overlapping; the builder rejects overlaps rather than merging them.
 
 With no window, a datastream is at its open site. Posting lists for that path are built at `Finish`. With a window, a datastream matches every interval that overlaps the window, including a site it has since left. That path builds temporary bitmaps from the interval table instead of the open-site postings.
+
+Site, group, and viewport qualify on the same interval. An interval qualifies when it overlaps the window (or it is the open interval when both bounds are zero), the group filter is empty or `GroupID` is one of `GroupIDs`, the site filter is empty or the interval's site is one of `SiteIDs`, and the viewport is empty or that site's box intersects the viewport. An empty `GroupID` qualifies only when the group filter is empty. The datastream is a hit when any qualifying interval exists and the datastream predicates pass. A window that covers meadow with group field and later ridge with group lab does not match site meadow and group lab.
+
+On the open path each datastream has one interval, so the open-site and open-group postings are that test. On the window path the per-site bitmaps are built from intervals that already pass time, group, and viewport. The site filter is a union of those bitmaps. A site count under a group filter counts datastreams with a qualifying interval at that site.
+
+The hit's site is a qualifying interval: the open site, or, for a window, the overlapping interval with the latest `BeginsAt` that also passes group, site, and viewport.
+
+```text
+GroupIDs(beginsAt, endsBefore int64, includeMemberOnly bool) ([]string, error)
+```
+
+`GroupIDs` returns the distinct group ids on in-play intervals of datastreams the caller may see. Sorted. Empty group ids are omitted. There is no count. It does not apply purpose, measurement, site, viewport, or `Query.GroupIDs`. `includeMemberOnly` false uses `public_ok`. True uses `public_ok ∪ member_ok`. Open-group keys are intersected with that access bitmap.
+
+`ReducePicker` turns the host's catalogs, the checked ids, and the per-organization `GroupIDs` results into the two picker lists. The rules are in [groups.md](groups.md).
 
 ## Map layer
 

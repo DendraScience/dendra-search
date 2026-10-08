@@ -46,11 +46,14 @@ type Site struct {
 }
 
 // Interval is a half-open deployment [BeginsAt, EndsBefore) in Unix milliseconds.
-// EndsBefore == 0 means the interval is still open.
+// EndsBefore == 0 means the interval is still open. GroupID is optional.
+// Empty means the interval has no group. The builder stores the id and does
+// not look up a name.
 type Interval struct {
 	SiteID     string
 	BeginsAt   int64
 	EndsBefore int64
+	GroupID    string
 }
 
 // Station holds deployment intervals for station-attached datastreams.
@@ -100,9 +103,13 @@ func (k Kind) String() string {
 // Query is one read of a shard. Empty slices and a nil viewport leave that
 // predicate out. Both time bounds zero means the open deployment.
 type Query struct {
-	Purpose           string
-	Measurements      []string
-	SiteIDs           []string
+	Purpose      string
+	Measurements []string
+	SiteIDs      []string
+	// GroupIDs filters intervals. Empty means every datastream, including
+	// intervals with no group. Several ids are a union: a datastream matches
+	// when one qualifying interval carries any listed id.
+	GroupIDs          []string
 	BeginsAt          int64
 	EndsBefore        int64
 	Viewport          *Box

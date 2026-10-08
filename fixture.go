@@ -232,20 +232,54 @@ func purposeOf(i int) string {
 }
 
 func intervalsFor(i int, siteID string) []Interval {
+	open := groupFor(i)
+	closed := otherPublicGroup(open)
 	switch {
 	case i%7 == 0:
 		return []Interval{
-			{SiteID: siteID, BeginsAt: fixtureEpoch, EndsBefore: fixtureEpoch + 5000},
-			{SiteID: siteID, BeginsAt: fixtureEpoch + 8000, EndsBefore: fixtureEpoch + 9000},
-			{SiteID: siteID, BeginsAt: fixtureEpoch + 25000, EndsBefore: 0},
+			{SiteID: siteID, BeginsAt: fixtureEpoch, EndsBefore: fixtureEpoch + 5000, GroupID: closed},
+			{SiteID: siteID, BeginsAt: fixtureEpoch + 8000, EndsBefore: fixtureEpoch + 9000, GroupID: closed},
+			{SiteID: siteID, BeginsAt: fixtureEpoch + 25000, EndsBefore: 0, GroupID: open},
 		}
 	case i%5 == 0:
 		return []Interval{
-			{SiteID: siteID, BeginsAt: fixtureEpoch, EndsBefore: fixtureEpoch + 5000},
-			{SiteID: siteID, BeginsAt: fixtureEpoch + 25000, EndsBefore: 0},
+			{SiteID: siteID, BeginsAt: fixtureEpoch, EndsBefore: fixtureEpoch + 5000, GroupID: closed},
+			{SiteID: siteID, BeginsAt: fixtureEpoch + 25000, EndsBefore: 0, GroupID: open},
 		}
 	default:
-		return []Interval{{SiteID: siteID, BeginsAt: fixtureEpoch, EndsBefore: 0}}
+		return []Interval{{SiteID: siteID, BeginsAt: fixtureEpoch, EndsBefore: 0, GroupID: open}}
+	}
+}
+
+// groupFor assigns a demo group id. internal is only on member-only rows
+// (i%10 == 0, which is PublicOK false). Some other rows have no group.
+func groupFor(i int) string {
+	if i%10 == 0 {
+		return "internal"
+	}
+	if i%13 == 0 {
+		return ""
+	}
+	switch i % 3 {
+	case 0:
+		return "field"
+	case 1:
+		return "lab"
+	default:
+		return "volunteers"
+	}
+}
+
+func otherPublicGroup(g string) string {
+	switch g {
+	case "field":
+		return "lab"
+	case "lab":
+		return "volunteers"
+	case "volunteers":
+		return "field"
+	default:
+		return g
 	}
 }
 

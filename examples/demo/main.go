@@ -1,5 +1,5 @@
 // Command demo builds a handful of sites and prints one cluster query
-// and one site query.
+// and one site query, then the north and south group picker.
 //
 //	go run ./examples/demo
 package main
@@ -178,6 +178,145 @@ func main() {
 	parsed, err := search.ParseVersionFile(raw)
 	must(err)
 	fmt.Printf("version file encoding %s  keep %s\n", parsed.Encoding, parsed.Keep[0].ObjectKey)
+
+	groupsDemo()
+}
+
+// groupsDemo builds the north and south shards and prints GroupIDs, the
+// picker rows, and the two query checks from docs/groups.md.
+func groupsDemo() {
+	creek := groupStream("north", "ds-creek", "", "Water", true)
+	creek.Intervals = []search.Interval{{SiteID: "creek", BeginsAt: 1, EndsBefore: 0, GroupID: "volunteers"}}
+	internal := groupStream("north", "ds-internal", "", "Air", false)
+	internal.Intervals = []search.Interval{{SiteID: "meadow", BeginsAt: 1, EndsBefore: 0, GroupID: "internal"}}
+	northShard := openOrg(groupOrg{
+		sites: []search.Site{
+			groupPlace("north", "North Reserve", "meadow", "Meadow", -120.10, 38.20),
+			groupPlace("north", "North Reserve", "ridge", "Ridge", -120.12, 38.22),
+			groupPlace("north", "North Reserve", "creek", "Creek", -120.08, 38.18),
+		},
+		stations: []search.Station{
+			{ID: "station-meadow", Name: "Meadow logger", OrganizationID: "north", Intervals: []search.Interval{{SiteID: "meadow", BeginsAt: 1, EndsBefore: 0, GroupID: "field"}}},
+			{ID: "station-ridge", Name: "Ridge logger", OrganizationID: "north", Intervals: []search.Interval{
+				{SiteID: "ridge", BeginsAt: 1000, EndsBefore: 2000, GroupID: "field"},
+				{SiteID: "ridge", BeginsAt: 3000, EndsBefore: 0, GroupID: "lab"},
+			}},
+			{ID: "station-moved", Name: "Moved logger", OrganizationID: "north", Intervals: []search.Interval{
+				{SiteID: "meadow", BeginsAt: 1000, EndsBefore: 2000, GroupID: "field"},
+				{SiteID: "ridge", BeginsAt: 3000, EndsBefore: 0, GroupID: "lab"},
+			}},
+		},
+		streams: []search.Datastream{
+			groupStream("north", "ds-meadow", "station-meadow", "Air", true),
+			groupStream("north", "ds-ridge", "station-ridge", "Air", true),
+			groupStream("north", "ds-moved", "station-moved", "Wind", true),
+			creek,
+			internal,
+		},
+	})
+	southShard := openOrg(groupOrg{
+		sites: []search.Site{
+			groupPlace("south", "South Reserve", "south-meadow", "South meadow", -119.40, 37.80),
+			groupPlace("south", "South Reserve", "south-bare", "South bare", -119.42, 37.82),
+		},
+		stations: []search.Station{
+			{ID: "station-south-meadow", Name: "South meadow logger", OrganizationID: "south", Intervals: []search.Interval{{SiteID: "south-meadow", BeginsAt: 1, EndsBefore: 0, GroupID: "lab"}}},
+			{ID: "station-south-bare", Name: "South bare logger", OrganizationID: "south", Intervals: []search.Interval{{SiteID: "south-bare", BeginsAt: 1, EndsBefore: 0}}},
+		},
+		streams: []search.Datastream{
+			groupStream("south", "ds-south-lab", "station-south-meadow", "Air", true),
+			groupStream("south", "ds-south-bare", "station-south-bare", "Soil", true),
+		},
+	})
+
+	fmt.Printf("\ngroups\n")
+	guestNorth := groupIDs(northShard, false)
+	memberNorth := groupIDs(northShard, true)
+	guestSouth := groupIDs(southShard, false)
+	fmt.Printf("guest north  %s\n", joinComma(guestNorth))
+	fmt.Printf("member north  %s\n", joinComma(memberNorth))
+	fmt.Printf("guest south  %s\n", joinComma(guestSouth))
+	if joinComma(guestNorth) != "field, lab, volunteers" {
+		must(fmt.Errorf("guest north GroupIDs %s", joinComma(guestNorth)))
+	}
+	if joinComma(memberNorth) != "field, internal, lab, volunteers" {
+		must(fmt.Errorf("member north GroupIDs %s", joinComma(memberNorth)))
+	}
+	if joinComma(guestSouth) != "lab" {
+		must(fmt.Errorf("guest south GroupIDs %s", joinComma(guestSouth)))
+	}
+
+	orgs := []search.CatalogName{{ID: "north", Name: "North Reserve"}, {ID: "south", Name: "South Reserve"}}
+	groups := []search.CatalogName{
+		{ID: "field", Name: "Field crew"},
+		{ID: "lab", Name: "Lab"},
+		{ID: "volunteers", Name: "Volunteers"},
+		{ID: "internal", Name: "Internal"},
+	}
+	byOrg := map[string][]string{"north": guestNorth, "south": guestSouth}
+	printPicker("none", orgs, groups, nil, nil, byOrg, "north,south", "field,lab,volunteers,internal")
+	printPicker("north and south", orgs, groups, []string{"north", "south"}, nil, byOrg, "north,south", "field,lab,volunteers")
+	printPicker("volunteers", orgs, groups, nil, []string{"volunteers"}, byOrg, "north", "field,lab,volunteers,internal")
+	printPicker("north, south, and volunteers", orgs, groups, []string{"north", "south"}, []string{"volunteers"}, byOrg, "north,south~", "field,lab,volunteers")
+	// Unchecking south leaves north and volunteers checked, so the right side
+	// is the groups north references. Internal is not among them.
+	printPicker("volunteers, south unchecked", orgs, groups, []string{"north"}, []string{"volunteers"}, byOrg, "north", "field,lab,volunteers")
+	printPicker("internal and north", orgs, groups, []string{"north"}, []string{"internal"}, byOrg, "north~", "field,lab,volunteers,internal~")
+
+	volunteers := search.Query{Geometry: search.GeometryShown, Zoom: 11, GroupIDs: []string{"volunteers"}, PageSize: 20}
+	northVol := mustQuery(northShard, volunteers)
+	southVol := mustQuery(southShard, volunteers)
+	fmt.Printf("\nvolunteers  north %d  south %d\n", northVol.TotalCount, southVol.TotalCount)
+	for _, c := range northVol.MeasurementCounts {
+		fmt.Printf("  %s  %d\n", c.Value, c.Count)
+	}
+	if !hitID(northVol, "ds-creek") || hitID(southVol, "ds-south-bare") {
+		must(fmt.Errorf("volunteers query"))
+	}
+
+	window := search.Query{Geometry: search.GeometryShown, Zoom: 11, BeginsAt: 1000, EndsBefore: 4000, PageSize: 20}
+	pairs := []struct {
+		site, group string
+		want        bool
+	}{
+		{"meadow", "field", true},
+		{"meadow", "lab", false},
+		{"ridge", "lab", true},
+		{"ridge", "field", false},
+	}
+	fmt.Printf("\nmoved datastream  window [1000, 4000)\n")
+	for _, pair := range pairs {
+		q := window
+		q.SiteIDs = []string{pair.site}
+		q.GroupIDs = []string{pair.group}
+		res := mustQuery(northShard, q)
+		got := hitID(res, "ds-moved")
+		fmt.Printf("  %s + %s  moved %v\n", pair.site, pair.group, got)
+		if pair.site == "meadow" && pair.group == "lab" && got {
+			must(fmt.Errorf("meadow and lab match together"))
+		}
+		if got != pair.want {
+			must(fmt.Errorf("%s + %s moved %v", pair.site, pair.group, got))
+		}
+	}
+}
+
+type groupOrg struct {
+	sites    []search.Site
+	stations []search.Station
+	streams  []search.Datastream
+}
+
+func openOrg(org groupOrg) *search.Shard {
+	b := search.NewBuilder()
+	must(b.AddSites(org.sites))
+	must(b.AddStations(org.stations))
+	must(b.AddDatastreams(org.streams))
+	blob, _, err := b.Finish(search.FinishPrivate)
+	must(err)
+	shard, err := search.Open(blob)
+	must(err)
+	return shard
 }
 
 func place(id, name string, lon, lat float64) search.Site {
@@ -200,6 +339,87 @@ func row(id, stationID, measurement string, public bool) search.Datastream {
 		MemberOK:       true,
 		UnitName:       "unit",
 	}
+}
+
+func groupPlace(orgID, orgName, id, name string, lon, lat float64) search.Site {
+	p := search.Point{Lon: lon, Lat: lat}
+	box := search.Box{West: lon, South: lat, East: lon, North: lat}
+	return search.Site{
+		ID: id, Name: name,
+		OrganizationID: orgID, OrganizationName: orgName,
+		Shown: box, Exact: box, ShownPoint: p, ExactPoint: p,
+	}
+}
+
+func groupStream(org, id, station, measurement string, public bool) search.Datastream {
+	return search.Datastream{
+		ID: id, Name: id, StationID: station,
+		OrganizationID: org,
+		Measurement:    measurement,
+		Purpose:        search.PurposeReadyToUse,
+		PublicOK:       public,
+		MemberOK:       true,
+		UnitName:       "unit",
+	}
+}
+
+func groupIDs(shard *search.Shard, member bool) []string {
+	ids, err := shard.GroupIDs(0, 0, member)
+	must(err)
+	return ids
+}
+
+func mustQuery(shard *search.Shard, q search.Query) search.Result {
+	res, err := shard.Query(q)
+	must(err)
+	return res
+}
+
+func hitID(res search.Result, id string) bool {
+	for _, hit := range res.Hits {
+		if hit.DatastreamID == id {
+			return true
+		}
+	}
+	return false
+}
+
+func joinComma(ids []string) string {
+	if len(ids) == 0 {
+		return ""
+	}
+	out := ids[0]
+	for _, id := range ids[1:] {
+		out += ", " + id
+	}
+	return out
+}
+
+func printPicker(label string, orgs, groups []search.CatalogName, checkedOrgs, checkedGroups []string, byOrg map[string][]string, wantOrgs, wantGroups string) {
+	orgRows, groupRows := search.ReducePicker(orgs, groups, checkedOrgs, checkedGroups, byOrg)
+	left := formatPicker(orgRows)
+	right := formatPicker(groupRows)
+	fmt.Printf("picker %s\n  orgs  %s\n  groups  %s\n", label, left, right)
+	if left != wantOrgs || right != wantGroups {
+		must(fmt.Errorf("picker %s: orgs %s groups %s", label, left, right))
+	}
+}
+
+func formatPicker(rows []search.PickerRow) string {
+	if len(rows) == 0 {
+		return ""
+	}
+	out := rows[0].ID
+	if rows[0].Grey {
+		out += "~"
+	}
+	for _, row := range rows[1:] {
+		out += "," + row.ID
+		if row.Grey {
+			out += "~"
+		}
+	}
+	return out
 }
 
 func must(err error) {

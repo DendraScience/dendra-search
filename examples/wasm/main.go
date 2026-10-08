@@ -5,6 +5,8 @@
 //
 //	searchBuild(specJSON) -> build JSON
 //	searchQuery(queryJSON) -> result JSON
+//	searchGroupIDs(boundsJSON) -> groups by organization
+//	searchReducePicker(pickerJSON) -> organization and group rows
 //
 // Both return a JSON string. Failures are {"error":"..."}. The previous
 // shards stay in place when searchBuild fails.
@@ -27,6 +29,38 @@ func main() {
 			raw = args[0].String()
 		}
 		out, err := build(raw)
+		if err != nil {
+			return jsonErr(err)
+		}
+		b, err := json.Marshal(out)
+		if err != nil {
+			return jsonErr(err)
+		}
+		return string(b)
+	})))
+
+	js.Global().Set("searchGroupIDs", keep(js.FuncOf(func(_ js.Value, args []js.Value) any {
+		raw := ""
+		if len(args) > 0 && !args[0].IsUndefined() && !args[0].IsNull() {
+			raw = args[0].String()
+		}
+		out, err := groupIDs(raw)
+		if err != nil {
+			return jsonErr(err)
+		}
+		b, err := json.Marshal(out)
+		if err != nil {
+			return jsonErr(err)
+		}
+		return string(b)
+	})))
+
+	js.Global().Set("searchReducePicker", keep(js.FuncOf(func(_ js.Value, args []js.Value) any {
+		raw := ""
+		if len(args) > 0 && !args[0].IsUndefined() && !args[0].IsNull() {
+			raw = args[0].String()
+		}
+		out, err := reducePicker(raw)
 		if err != nil {
 			return jsonErr(err)
 		}
@@ -244,6 +278,7 @@ type queryIn struct {
 	Purpose           string   `json:"purpose"`
 	Measurements      []string `json:"measurements"`
 	SiteIDs           []string `json:"site_ids"`
+	GroupIDs          []string `json:"group_ids"`
 	OrganizationIDs   []string `json:"organization_ids"`
 	Viewport          *boxIn   `json:"viewport"`
 	Geometry          string   `json:"geometry"`
@@ -339,6 +374,7 @@ func query(raw string) (queryOut, error) {
 		Purpose:           in.Purpose,
 		Measurements:      in.Measurements,
 		SiteIDs:           in.SiteIDs,
+		GroupIDs:          in.GroupIDs,
 		Geometry:          in.Geometry,
 		Zoom:              in.Zoom,
 		IncludeMemberOnly: in.IncludeMemberOnly,
@@ -475,6 +511,101 @@ func toPoint(p search.Point) pointJSON {
 
 func toBox(b search.Box) boxJSON {
 	return boxJSON{West: b.West, South: b.South, East: b.East, North: b.North}
+}
+
+type groupIDsIn struct {
+	BeginsAt          int64 `json:"begins_at"`
+	EndsBefore        int64 `json:"ends_before"`
+	IncludeMemberOnly bool  `json:"include_member_only"`
+}
+
+type groupIDsOut struct {
+	GroupsByOrg map[string][]string `json:"groups_by_org"`
+}
+
+// groupIDs calls GroupIDs on every loaded organization. The page uses the
+// same time bounds and access flag as the search query.
+func groupIDs(raw string) (groupIDsOut, error) {
+	if len(loaded) == 0 {
+		return groupIDsOut{}, fmt.Errorf("search: searchBuild first")
+	}
+	var in groupIDsIn
+	if raw != "" {
+		if err := json.Unmarshal([]byte(raw), &in); err != nil {
+			return groupIDsOut{}, err
+		}
+	}
+	out := groupIDsOut{GroupsByOrg: make(map[string][]string, len(loaded))}
+	for _, org := range loaded {
+		ids, err := org.shard.GroupIDs(in.BeginsAt, in.EndsBefore, in.IncludeMemberOnly)
+		if err != nil {
+			return groupIDsOut{}, err
+		}
+		if ids == nil {
+			ids = []string{}
+		}
+		out.GroupsByOrg[org.id] = ids
+	}
+	return out, nil
+}
+
+type catalogNameJSON struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+type pickerIn struct {
+	Orgs          []catalogNameJSON   `json:"orgs"`
+	Groups        []catalogNameJSON   `json:"groups"`
+	CheckedOrgs   []string            `json:"checked_orgs"`
+	CheckedGroups []string            `json:"checked_groups"`
+	GroupsByOrg   map[string][]string `json:"groups_by_org"`
+}
+
+type pickerRowJSON struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	Grey bool   `json:"grey"`
+}
+
+type pickerOut struct {
+	Orgs   []pickerRowJSON `json:"orgs"`
+	Groups []pickerRowJSON `json:"groups"`
+}
+
+// reducePicker calls ReducePicker. The page has already applied the text filter.
+func reducePicker(raw string) (pickerOut, error) {
+	if raw == "" {
+		return pickerOut{}, fmt.Errorf("search: picker required")
+	}
+	var in pickerIn
+	if err := json.Unmarshal([]byte(raw), &in); err != nil {
+		return pickerOut{}, err
+	}
+	orgRows, groupRows := search.ReducePicker(
+		catalogNames(in.Orgs),
+		catalogNames(in.Groups),
+		in.CheckedOrgs,
+		in.CheckedGroups,
+		in.GroupsByOrg,
+	)
+	return pickerOut{Orgs: pickerRows(orgRows), Groups: pickerRows(groupRows)}, nil
+}
+
+func catalogNames(in []catalogNameJSON) []search.CatalogName {
+	out := make([]search.CatalogName, len(in))
+	for i, row := range in {
+		out[i] = search.CatalogName{ID: row.ID, Name: row.Name}
+	}
+	return out
+}
+
+func pickerRows(in []search.PickerRow) []pickerRowJSON {
+	out := make([]pickerRowJSON, len(in))
+	for i, row := range in {
+		out[i] = pickerRowJSON{ID: row.ID, Name: row.Name, Grey: row.Grey}
+	}
+	return out
 }
 
 func jsonErr(err error) string {

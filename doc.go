@@ -8,6 +8,9 @@
 // in place, so Finish may be called again with the other mode. Open loads those bytes into an
 // immutable shard and builds the shown and exact R-trees. Query reads the
 // shard. Combine merges one result per organization and clusters the sites once.
+// An interval may carry a group id. Query.GroupIDs filters on that id.
+// GroupIDs lists the ids on intervals in play. ReducePicker turns organization
+// and group catalogs, the checked ids, and those lists into the picker rows.
 //
 // WriteContainer and ParseContainer frame public shards in an uncompressed
 // DSPC container. VersionFile marshals the current.json pointer. An empty

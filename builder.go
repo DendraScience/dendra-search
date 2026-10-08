@@ -44,6 +44,7 @@ type Builder struct {
 	purpose        map[string]*roaring.Bitmap
 	measurement    map[string]*roaring.Bitmap
 	currentSite    map[string]*roaring.Bitmap
+	openGroup      map[string]*roaring.Bitmap
 	publicOK       *roaring.Bitmap
 	memberOK       *roaring.Bitmap
 }
@@ -62,6 +63,7 @@ func (b *Builder) resetIndex() {
 	b.purpose = map[string]*roaring.Bitmap{}
 	b.measurement = map[string]*roaring.Bitmap{}
 	b.currentSite = map[string]*roaring.Bitmap{}
+	b.openGroup = map[string]*roaring.Bitmap{}
 	b.publicOK = roaring.New()
 	b.memberOK = roaring.New()
 }
@@ -184,15 +186,23 @@ func (b *Builder) AddDatastream(datastream Datastream) error {
 	doc := uint32(len(b.forward))
 	openID := resolved.openID
 	openSite := b.siteAt[openID]
+	var openGroup string
 	for _, iv := range resolved.intervals {
 		b.intervals = append(b.intervals, storedInterval{
 			doc:    doc,
 			site:   b.siteAt[iv.SiteID],
 			begins: iv.BeginsAt,
 			ends:   iv.EndsBefore,
+			group:  iv.GroupID,
 		})
+		if iv.EndsBefore == 0 {
+			openGroup = iv.GroupID
+		}
 	}
 	addPosting(b.currentSite, openID, doc)
+	if openGroup != "" {
+		addPosting(b.openGroup, openGroup, doc)
+	}
 	if datastream.Purpose != "" {
 		addPosting(b.purpose, datastream.Purpose, doc)
 	}
@@ -264,6 +274,7 @@ func (b *Builder) Finish(mode FinishMode) ([]byte, uint32, error) {
 		purpose:     b.purpose,
 		measurement: b.measurement,
 		currentSite: b.currentSite,
+		openGroup:   b.openGroup,
 		publicOK:    b.publicOK,
 		memberOK:    b.memberOK,
 	}

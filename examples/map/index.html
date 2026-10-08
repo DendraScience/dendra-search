@@ -45,10 +45,23 @@
             </select>
           </label>
         </section>
-        <section>
-          <h2>Organizations</h2>
-          <p class="hint" id="org-hint">All organizations</p>
-          <div id="org-list" class="orgs"></div>
+        <section class="picker" aria-label="Organizations and groups">
+          <div>
+            <h2>Organizations</h2>
+            <label class="field">
+              <span class="sr">Filter organizations</span>
+              <input id="org-filter" type="search" placeholder="Filter" autocomplete="off" />
+            </label>
+            <div id="org-list" class="picker-list"></div>
+          </div>
+          <div>
+            <h2>Groups</h2>
+            <label class="field">
+              <span class="sr">Filter groups</span>
+              <input id="group-filter" type="search" placeholder="Filter" autocomplete="off" />
+            </label>
+            <div id="group-list" class="picker-list"></div>
+          </div>
         </section>
         <p id="layer-note" class="note">Zoom in to list datastreams.</p>
         <section id="meas-section" hidden>
