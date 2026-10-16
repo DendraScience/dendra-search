@@ -267,6 +267,72 @@ func TestPaging(t *testing.T) {
 	}
 }
 
+func TestClosedDeployment(t *testing.T) {
+	r := rows{
+		sites: []Site{place("meadow", -120, 38)},
+		stations: []Station{{
+			ID: "station-retired", Name: "Retired logger", OrganizationID: "org",
+			Intervals: []Interval{{SiteID: "meadow", BeginsAt: 1000, EndsBefore: 2000, GroupID: "field"}},
+		}},
+		datastreams: []Datastream{
+			{ID: "ds-retired", Name: "Air", OrganizationID: "org", StationID: "station-retired", Measurement: "Air", Purpose: PurposeReadyToUse, PublicOK: true, MemberOK: true},
+			{ID: "ds-site", Name: "Soil", OrganizationID: "org", Measurement: "Soil", Purpose: PurposeReadyToUse, PublicOK: true, MemberOK: true, Intervals: []Interval{{SiteID: "meadow", BeginsAt: 1000, EndsBefore: 2000, GroupID: "lab"}}},
+		},
+	}
+	b := NewBuilder()
+	if err := b.AddSites(r.sites); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.AddStations(r.stations); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.AddDatastreams(r.datastreams); err != nil {
+		t.Fatal(err)
+	}
+	priv, n, err := b.Finish(FinishPrivate)
+	if err != nil || n != 2 {
+		t.Fatalf("private docs: %d %v", n, err)
+	}
+	pub, nPub, err := b.Finish(FinishPublic)
+	if err != nil || nPub != 2 {
+		t.Fatalf("public docs: %d %v", nPub, err)
+	}
+	for _, blob := range [][]byte{priv, pub} {
+		shard, err := Open(blob)
+		if err != nil {
+			t.Fatal(err)
+		}
+		open := query(t, shard, Query{Geometry: GeometryShown, Zoom: 11, PageSize: 10, IncludeMemberOnly: true})
+		if open.TotalCount != 0 || len(open.Candidates) != 0 {
+			t.Fatalf("open count %d candidates %v", open.TotalCount, idsOf(open))
+		}
+		groups, err := shard.GroupIDs(0, 0, true)
+		if err != nil || len(groups) != 0 {
+			t.Fatalf("open groups %v %v", groups, err)
+		}
+		window := query(t, shard, Query{Geometry: GeometryShown, Zoom: 11, BeginsAt: 1000, EndsBefore: 2000, PageSize: 10, IncludeMemberOnly: true})
+		if window.TotalCount != 2 || !hasCandidate(window, "meadow") {
+			t.Fatalf("window count %d candidates %v", window.TotalCount, idsOf(window))
+		}
+		for _, hit := range window.Hits {
+			if hit.SiteID != "meadow" {
+				t.Fatalf("hit %+v", hit)
+			}
+		}
+		groups, err = shard.GroupIDs(1000, 2000, true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(groups) != 2 || groups[0] != "field" || groups[1] != "lab" {
+			t.Fatalf("window groups %v", groups)
+		}
+		after := query(t, shard, Query{Geometry: GeometryShown, Zoom: 11, BeginsAt: 2000, EndsBefore: 3000, PageSize: 10, IncludeMemberOnly: true})
+		if after.TotalCount != 0 {
+			t.Fatalf("after end %d", after.TotalCount)
+		}
+	}
+}
+
 func TestBadQuery(t *testing.T) {
 	shard := buildShard(t, sampleRows())
 	if _, err := shard.Query(Query{Geometry: "private"}); err == nil {

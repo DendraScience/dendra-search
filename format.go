@@ -12,6 +12,10 @@ import (
 const (
 	formatVersion uint16 = 2
 	maxField             = 64 << 20
+	// noOpenSite is the in-memory forward-row index when every deployment has ended.
+	noOpenSite = -1
+	// noOpenSiteIndex is that index on disk. A real site index is never this value.
+	noOpenSiteIndex uint32 = 0xFFFFFFFF
 )
 
 var formatMagic = [4]byte{'D', 'S', '0', '1'}
@@ -198,9 +202,6 @@ func writePublicShard(img shardImage) ([]byte, uint32, error) {
 		if !isPublic[i] {
 			continue
 		}
-		if row.openSite < 0 || row.openSite >= len(siteRemap) || siteRemap[row.openSite] < 0 {
-			return nil, 0, ErrFormat
-		}
 		doc := pubDoc[i]
 		e.str(row.datastreamID)
 		e.str(row.name)
@@ -210,7 +211,15 @@ func writePublicShard(img shardImage) ([]byte, uint32, error) {
 		e.str(row.measurement)
 		e.str(row.purpose)
 		e.str(row.organizationID)
-		e.u32(uint32(siteRemap[row.openSite]))
+		if row.openSite < 0 {
+			e.u32(noOpenSiteIndex)
+		} else {
+			if row.openSite >= len(siteRemap) || siteRemap[row.openSite] < 0 {
+				return nil, 0, ErrFormat
+			}
+			e.u32(uint32(siteRemap[row.openSite]))
+			addPosting(currentSite, img.sites[row.openSite].ID, doc)
+		}
 		if row.purpose != "" {
 			addPosting(purpose, row.purpose, doc)
 		}
@@ -220,7 +229,6 @@ func writePublicShard(img shardImage) ([]byte, uint32, error) {
 		if img.memberOK != nil && img.memberOK.Contains(uint32(i)) {
 			memberOK.Add(doc)
 		}
-		addPosting(currentSite, img.sites[row.openSite].ID, doc)
 		if g := openGroupByDoc[i]; g != "" {
 			addPosting(openGroup, g, doc)
 		}
@@ -595,6 +603,10 @@ func (d *dec) forward(siteCount uint32) (forwardRow, error) {
 	open, err := d.u32()
 	if err != nil {
 		return forwardRow{}, err
+	}
+	if open == noOpenSiteIndex {
+		row.openSite = noOpenSite
+		return row, nil
 	}
 	if siteCount == 0 || open >= siteCount {
 		return forwardRow{}, ErrFormat

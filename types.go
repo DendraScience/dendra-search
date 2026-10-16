@@ -46,7 +46,10 @@ type Site struct {
 }
 
 // Interval is a half-open deployment [BeginsAt, EndsBefore) in Unix milliseconds.
-// EndsBefore == 0 means the interval is still open. GroupID is optional.
+// EndsBefore == 0 means the interval is still open, the same as an unset
+// ends_before on the wire. A non-zero EndsBefore means the deployment has
+// ended. A datastream has at most one open interval. Every interval may be
+// closed. GroupID is optional.
 // Empty means the interval has no group. The builder stores the id and does
 // not look up a name.
 type Interval struct {

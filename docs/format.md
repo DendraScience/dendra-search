@@ -47,12 +47,12 @@ Each forward row, in doc id order:
 
 ```text
 datastream id, name, station id, station name, unit, measurement, purpose, organization id
-open site index    uint32
+open site index    uint32   // ^uint32(0) means every deployment has ended
 ```
 
 Station name is copied from the station. A site-attached datastream leaves it empty. Site name is not on this row.
 
-A posting section is a `uint32` count, then that many pairs of string key and bitmap. Keys are sorted. Purpose and measurement use the caller's strings. Open-site keys are site ids, and those bitmaps hold the datastreams whose open deployment is that site. Open-group keys are group ids, and those bitmaps hold the datastreams whose open interval carries that id. Empty group ids are omitted. Window queries do not use the open-site or open-group bitmaps; they scan the interval table. The open-group bitmaps are a filter accelerator, not a counted facet.
+A posting section is a `uint32` count, then that many pairs of string key and bitmap. Keys are sorted. Purpose and measurement use the caller's strings. Open-site keys are site ids, and those bitmaps hold the datastreams whose open deployment is that site. A datastream whose deployments have all ended is omitted. Open-group keys are group ids, and those bitmaps hold the datastreams whose open interval carries that id. Empty group ids are omitted. Window queries do not use the open-site or open-group bitmaps; they scan the interval table, including intervals that have ended. The open-group bitmaps are a filter accelerator, not a counted facet.
 
 `Open` rejects a bad magic, a version other than 2, a truncated buffer, or trailing bytes.
 

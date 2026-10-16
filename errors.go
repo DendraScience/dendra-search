@@ -16,8 +16,8 @@ var (
 	// ErrNotFound means a datastream names a site or station that was not added.
 	ErrNotFound = errors.New("search: unknown site or station")
 
-	// ErrInterval means a deployment interval is empty, overlapping, or missing
-	// its single open end.
+	// ErrInterval means a deployment interval is empty, overlapping, inverted,
+	// or has more than one open end. Zero open ends is a deployment that has ended.
 	ErrInterval = errors.New("search: invalid interval")
 
 	// ErrDatastream means a datastream has no place, or both a station and its own intervals.

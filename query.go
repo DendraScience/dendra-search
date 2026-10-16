@@ -52,6 +52,7 @@ func (s *Shard) evaluate(q Query) (hits, withoutSites, withoutMeas *roaring.Bitm
 	var timeBase *roaring.Bitmap
 	var geo *roaring.Bitmap
 	if q.BeginsAt == 0 && q.EndsBefore == 0 {
+		base.And(openDocs(s.currentSite))
 		timeBase = base
 		if len(q.GroupIDs) > 0 {
 			timeBase = base.Clone()
@@ -92,6 +93,18 @@ func (s *Shard) accessBitmap(includeMemberOnly bool) *roaring.Bitmap {
 		base.Or(s.memberOK)
 	}
 	return base
+}
+
+// openDocs is the datastreams that have an open deployment. A fully closed
+// history is absent from a query that sets no time window.
+func openDocs(postings map[string]*roaring.Bitmap) *roaring.Bitmap {
+	out := roaring.New()
+	for _, bm := range postings {
+		if bm != nil {
+			out.Or(bm)
+		}
+	}
+	return out
 }
 
 // openGroupMask is the union of open-group postings for ids. Empty ids are skipped.

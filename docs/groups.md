@@ -1,18 +1,16 @@
 # Groups
 
-A group is a public resource with an id, in the same sense as an organization: many of them, defined in advance, eventually a page of its own. It is not a facet. The search module stores the id on a deployment interval and answers two questions: which groups those intervals reference, and which datastreams match a selected set of groups. Names, approval, and owners live in metadata. The host lists them.
+A group is a catalog record with an id, in the same sense as an organization: many of them, defined in advance, eventually a page of its own. It is not a facet. The search module stores the id on a deployment interval and answers two questions: which groups those intervals reference, and which datastreams match a selected set of groups. Names live in metadata. The host lists them.
 
 ## Group resource
 
-Metadata (not this module) owns the group record.
+Metadata (not this module) owns the group record. The shipped message is `Group`: `id`, `name`, `is_enabled`, `is_hidden`, and the profile fields beside those. Search reads the id off the deployment. It does not read the name.
 
-- `id` and `name`. A later public page can add slug, description, and profile fields the way an organization page does. Search does not read those fields.
-- A person submits a group. It stays pending until a system admin with permission to approve groups approves it. The submitter is the first owner.
-- Owners are subjects on the group. An owner can add or remove owners. A system admin can do the same. Pending groups have the submitter as owner and are not listable as public groups.
-- Approved groups are public. `ListGroups` returns them to guests and signed-in users. There is no membership gate on a group in this version.
-- `ListOrganizations` is unchanged. A signed-in user sees the orgs they may see today. A guest sees public orgs.
+`Deployment.group_id` is optional. Empty means that interval has no group. A non-empty id is a group that existed and was not deleted when the deployment was saved. That check is not an `is_enabled` check. A group does not grant membership and does not change who may download a shard.
 
-A deployment may set `group_id` only to an approved group. Empty means that interval has no group. Deleting a group that a deployment still references fails until those deployments drop the id. Renaming a group does not rebuild shards, because the shard stores the id.
+`ListGroups` is the name catalog. The Explore page asks for `is_enabled` true and `is_hidden` false. `ListOrganizations` is unchanged: a signed-in user sees the orgs they may see today, and a guest sees public orgs.
+
+Renaming, hiding, or enabling a group does not rebuild shards, because the shard stores the id. Setting or clearing `group_id` on a deployment does, because that write is a station or datastream change.
 
 The association is the deployment, not the site and not the station as a whole. Station-attached datastreams take intervals from the station. Site-attached datastreams, including manual uploads at a site, take intervals from the datastream. Either interval may carry a `group_id`. One site can host streams whose groups differ. One group can appear in many organizations.
 
@@ -26,7 +24,7 @@ The shard format version is 2. `Open` rejects any other version. [format.md](for
 
 ## Time
 
-No window means the open interval. A window means every interval that overlaps `[BeginsAt, EndsBefore)`. A datastream has one open interval. Overlaps are rejected at build time.
+No window means the open interval, when the datastream has one. A deployment that has ended does not match. A window means every interval that overlaps `[BeginsAt, EndsBefore)`, including intervals that have ended. A datastream has at most one open interval. Overlaps are rejected at build time.
 
 Group follows the interval. The open interval contributes its group, or none. A window can contribute several groups for one datastream when successive deployments name different groups. A gap contributes none.
 
@@ -45,7 +43,7 @@ Purpose, measurement, and access stay on the datastream. Site, group, and viewpo
 
 The doc is in the hit set when any qualifying interval exists and the datastream-level predicates pass (access, purpose, measurement).
 
-This joint test is required. A window that covers two deployments of one datastream, meadow with group field and later ridge with group lab, must not match site meadow and group lab. Those values never occur on the same interval. ANDing a site bitmap built from every overlapping interval with a group bitmap built the same way would accept that pair. The open path hides the bug because a datastream has one open interval.
+This joint test is required. A window that covers two deployments of one datastream, meadow with group field and later ridge with group lab, must not match site meadow and group lab. Those values never occur on the same interval. ANDing a site bitmap built from every overlapping interval with a group bitmap built the same way would accept that pair. The open path hides the bug because a datastream has at most one open interval.
 
 The group filter stays inside site counts and measurement counts, the way purpose does. Site counts still omit the site filter. Measurement counts still omit the measurement filter. A site count under a group filter counts docs with a qualifying interval at that site, not docs that merely have the group on some other in-play interval.
 
@@ -67,8 +65,8 @@ The host calls `GroupIDs` on each visible organization shard with the same time 
 
 The Explore panel, and the demo, show organizations on the left and groups on the right. Each side has a text filter. The filter runs on the list operation:
 
-- Left: `ListOrganizations`, with today's visibility. The text filter narrows that page.
-- Right: `ListGroups` of approved groups. The text filter narrows that page.
+- Left: `ListOrganizations`, with today's visibility, `is_enabled` true, `is_hidden` false. The text filter narrows that page.
+- Right: `ListGroups` with `is_enabled` true and `is_hidden` false. The text filter narrows that page. The API does not drop hidden rows when that filter is omitted, so the page sends it.
 
 The index does not supply those catalogs and does not attach a datastream count to either row.
 
@@ -85,7 +83,7 @@ A row is shown when it is relevant or it is checked. A row is grey when it is ch
 
 Neither side checked: both lists are the filtered catalogs, and nothing is grey. Checking orgs whittles groups. Checking groups whittles orgs. The two reductions are computed independently from `groupsByOrg`. They are not applied as a second intersection on top of each other.
 
-Worked checks, using the demo data below, open deployments, guest access. The right catalog still lists `internal`, because the group record is public. Guest `GroupIDs` for north omits it, because only a member-only datastream references it.
+Worked checks, using the demo data below, open deployments, guest access. The right catalog still lists `internal`, because that demo row is in the local catalog. Guest `GroupIDs` for north omits it, because only a member-only datastream references it. A hidden group is a different case: `ListGroups` with `is_hidden` false leaves it out of the catalog, and `ReducePicker` then omits it.
 
 | Checks | Left | Right |
 | --- | --- | --- |
@@ -147,4 +145,4 @@ That last case is the joint-interval assertion. The demo exits non-zero if meado
 
 ## Later, outside this library
 
-The group page, submit and approve, and the owner list are metadata and the public site. The Explore picker in the Main App calls `ListOrganizations`, `ListGroups`, `GroupIDs`, and `ReducePicker`, then passes the checked ids into the same search query the map already runs. The map example under `examples/map` is that picker over the demo catalog. Local lists stand in for the two list calls, and the page calls `GroupIDs` and `ReducePicker`.
+The Explore picker in the Main App calls `ListOrganizations`, `ListGroups`, `GroupIDs`, and `ReducePicker`, then passes the checked ids into the same search query the map already runs. That host is the client-side datastream-search path in `dendra-api-services`. The map example under `examples/map` is that picker over the demo catalog. Local lists stand in for the two list calls, and the page calls `GroupIDs` and `ReducePicker`.

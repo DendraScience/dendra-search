@@ -11,9 +11,15 @@ func TestAddOrder(t *testing.T) {
 	if err := b.AddStation(Station{ID: "station-1", OrganizationID: "org", Intervals: []Interval{{SiteID: "a", BeginsAt: 1, EndsBefore: 0}}}); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("station before its site: %v", err)
 	}
+	if b.HasSite("a") || b.HasStation("station-1") {
+		t.Fatal("membership before add")
+	}
 	site := place("a", -120, 38)
 	if err := b.AddSite(site); err != nil {
 		t.Fatal(err)
+	}
+	if !b.HasSite("a") || b.HasSite("missing") {
+		t.Fatal("site membership")
 	}
 	if err := b.AddSite(site); !errors.Is(err, ErrDuplicate) {
 		t.Fatalf("duplicate: %v", err)
@@ -21,6 +27,9 @@ func TestAddOrder(t *testing.T) {
 	station := Station{ID: "station-1", OrganizationID: "org", Intervals: []Interval{{SiteID: "a", BeginsAt: 1, EndsBefore: 0}}}
 	if err := b.AddStation(station); err != nil {
 		t.Fatal(err)
+	}
+	if !b.HasStation("station-1") || b.HasStation("missing") {
+		t.Fatal("station membership")
 	}
 	if err := b.AddSite(place("b", -121, 38)); !errors.Is(err, ErrOrder) {
 		t.Fatalf("site after station: %v", err)
@@ -59,6 +68,12 @@ func TestIntervalRules(t *testing.T) {
 	b := NewBuilder()
 	if err := b.AddSites(sites); err != nil {
 		t.Fatal(err)
+	}
+	if err := b.AddStation(Station{ID: "station-closed", OrganizationID: "org", Intervals: []Interval{
+		{SiteID: "a", BeginsAt: 1, EndsBefore: 10},
+		{SiteID: "b", BeginsAt: 10, EndsBefore: 20},
+	}}); err != nil {
+		t.Fatalf("closed deployment: %v", err)
 	}
 	err := b.AddStation(Station{ID: "station-1", OrganizationID: "org", Intervals: []Interval{
 		{SiteID: "a", BeginsAt: 1, EndsBefore: 10},

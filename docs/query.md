@@ -10,7 +10,7 @@ Empty fields are left out of the predicate.
 | `Measurements` | Every measurement. Several values are a union. |
 | `SiteIDs` | Every site in play. Several values are a union. |
 | `GroupIDs` | Every datastream, including intervals with no group. Several values are a union. |
-| `BeginsAt` and `EndsBefore` | The open deployment (`EndsBefore == 0` on the interval). Set both, or neither. |
+| `BeginsAt` and `EndsBefore` | The open deployment (`EndsBefore == 0`). A datastream whose deployments have all ended does not match. Set both, or neither. |
 | `Viewport` | No geographic predicate. Clustering still uses `Geometry`. |
 | `IncludeMemberOnly` | `public_ok` only. True uses `public_ok ∪ member_ok`. |
 | `MapSiteLimit` | 100 |
@@ -30,13 +30,13 @@ Purpose stays in both. A group filter stays in both, the way purpose does. Measu
 
 ## Time
 
-Intervals are half-open `[BeginsAt, EndsBefore)` in Unix milliseconds. `EndsBefore == 0` means open. Each datastream has exactly one open interval. Intervals must already be non-overlapping; the builder rejects overlaps rather than merging them.
+Intervals are half-open `[BeginsAt, EndsBefore)` in Unix milliseconds. `EndsBefore == 0` means the deployment is still open, the same as an unset `ends_before` on the wire. A non-zero `EndsBefore` means the deployment has ended. A datastream has at most one open interval. Every interval may be closed. Intervals must already be non-overlapping; the builder rejects overlaps rather than merging them.
 
-With no window, a datastream is at its open site. Posting lists for that path are built at `Finish`. With a window, a datastream matches every interval that overlaps the window, including a site it has since left. That path builds temporary bitmaps from the interval table instead of the open-site postings.
+With no window, a datastream is at its open site. A fully closed history does not match. Posting lists for that path are built at `Finish`. With a window, a datastream matches every interval that overlaps the window, including one that has ended and a site it has since left. That path builds temporary bitmaps from the interval table instead of the open-site postings.
 
 Site, group, and viewport qualify on the same interval. An interval qualifies when it overlaps the window (or it is the open interval when both bounds are zero), the group filter is empty or `GroupID` is one of `GroupIDs`, the site filter is empty or the interval's site is one of `SiteIDs`, and the viewport is empty or that site's box intersects the viewport. An empty `GroupID` qualifies only when the group filter is empty. The datastream is a hit when any qualifying interval exists and the datastream predicates pass. A window that covers meadow with group field and later ridge with group lab does not match site meadow and group lab.
 
-On the open path each datastream has one interval, so the open-site and open-group postings are that test. On the window path the per-site bitmaps are built from intervals that already pass time, group, and viewport. The site filter is a union of those bitmaps. A site count under a group filter counts datastreams with a qualifying interval at that site.
+On the open path the open-site and open-group postings are that test, and a datastream with no open interval is absent. On the window path the per-site bitmaps are built from intervals that already pass time, group, and viewport, including intervals that have ended. The site filter is a union of those bitmaps. A site count under a group filter counts datastreams with a qualifying interval at that site.
 
 The hit's site is a qualifying interval: the open site, or, for a window, the overlapping interval with the latest `BeginsAt` that also passes group, site, and viewport.
 

@@ -115,6 +115,16 @@ func (b *Builder) AddSite(site Site) error {
 	return nil
 }
 
+// HasSite reports whether AddSite accepted id. The lookup uses the id map
+// AddSite already keeps.
+func (b *Builder) HasSite(id string) bool {
+	if b == nil || b.siteAt == nil {
+		return false
+	}
+	_, ok := b.siteAt[id]
+	return ok
+}
+
 // AddSites adds each site in order.
 func (b *Builder) AddSites(sites []Site) error {
 	for i := range sites {
@@ -152,6 +162,16 @@ func (b *Builder) AddStation(station Station) error {
 	return nil
 }
 
+// HasStation reports whether AddStation accepted id. The lookup uses the id
+// map AddStation already keeps.
+func (b *Builder) HasStation(id string) bool {
+	if b == nil || b.stationAt == nil {
+		return false
+	}
+	_, ok := b.stationAt[id]
+	return ok
+}
+
 // AddStations adds each station in order.
 func (b *Builder) AddStations(stations []Station) error {
 	for i := range stations {
@@ -184,8 +204,7 @@ func (b *Builder) AddDatastream(datastream Datastream) error {
 	b.stage = stageDatastreams
 	b.datastreamAt[datastream.ID] = struct{}{}
 	doc := uint32(len(b.forward))
-	openID := resolved.openID
-	openSite := b.siteAt[openID]
+	openSite := noOpenSite
 	var openGroup string
 	for _, iv := range resolved.intervals {
 		b.intervals = append(b.intervals, storedInterval{
@@ -196,12 +215,15 @@ func (b *Builder) AddDatastream(datastream Datastream) error {
 			group:  iv.GroupID,
 		})
 		if iv.EndsBefore == 0 {
+			openSite = b.siteAt[iv.SiteID]
 			openGroup = iv.GroupID
 		}
 	}
-	addPosting(b.currentSite, openID, doc)
-	if openGroup != "" {
-		addPosting(b.openGroup, openGroup, doc)
+	if resolved.openID != "" {
+		addPosting(b.currentSite, resolved.openID, doc)
+		if openGroup != "" {
+			addPosting(b.openGroup, openGroup, doc)
+		}
 	}
 	if datastream.Purpose != "" {
 		addPosting(b.purpose, datastream.Purpose, doc)
@@ -317,7 +339,6 @@ func (b *Builder) resolve(datastream Datastream) (resolvedDatastream, error) {
 			return resolvedDatastream{}, err
 		}
 	}
-	// validateIntervals requires exactly one open interval.
 	var openID string
 	for _, iv := range intervals {
 		if iv.EndsBefore == 0 {
@@ -397,7 +418,7 @@ func validateIntervals(intervals []Interval, sites map[string]int) error {
 			}
 		}
 	}
-	if open != 1 {
+	if open > 1 {
 		return ErrInterval
 	}
 	return nil
