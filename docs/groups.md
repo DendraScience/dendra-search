@@ -20,7 +20,7 @@ The association is the deployment, not the site and not the station as a whole. 
 
 Each stored interval keeps the group id beside the site index and the time bounds. `Finish` also writes open-group postings: group id to the bitmap of docs whose open interval (`EndsBefore == 0`) carries that id. Empty ids are omitted. Those postings are a filter accelerator for the open path. They are not a counted facet.
 
-The shard format version is 2. `Open` rejects any other version. [format.md](format.md) describes the interval layout and the open-group section.
+The shard format version is 3. `Open` rejects any other version. [format.md](format.md) describes the interval layout and the open-group section.
 
 ## Time
 

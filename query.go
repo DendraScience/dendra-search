@@ -21,7 +21,10 @@ func (s *Shard) Query(q Query) (Result, error) {
 	if res.Kind == KindSites {
 		res.SiteCounts = s.siteCounts(scope, withoutSites, siteBM)
 	}
-	if q.PageSize > 0 {
+	switch {
+	case q.AllHits && res.Kind == KindSites:
+		res.Hits = s.allHits(q, hits)
+	case !q.AllHits && q.PageSize > 0:
 		res.Hits, res.NextPageAfter, res.HasMore = s.page(q, hits)
 	}
 	return res, nil
@@ -358,6 +361,18 @@ func countsFromBitmaps(postings map[string]*roaring.Bitmap, mask *roaring.Bitmap
 	return countsFromMap(vals)
 }
 
+func (s *Shard) allHits(q Query, hits *roaring.Bitmap) []Hit {
+	if hits.IsEmpty() {
+		return nil
+	}
+	ids := hits.ToArray()
+	out := make([]Hit, 0, len(ids))
+	for _, id := range ids {
+		out = append(out, s.hit(id, q))
+	}
+	return out
+}
+
 func (s *Shard) page(q Query, hits *roaring.Bitmap) ([]Hit, uint32, bool) {
 	if hits.IsEmpty() {
 		return nil, 0, false
@@ -400,6 +415,7 @@ func (s *Shard) hit(doc uint32, q Query) Hit {
 		UnitName:         row.unit,
 		Measurement:      row.measurement,
 		Purpose:          row.purpose,
+		FieldNames:       append([]string(nil), row.fieldNames...),
 	}
 }
 

@@ -1,6 +1,10 @@
 package search
 
 import (
+	"encoding/binary"
+	"errors"
+	"fmt"
+	"slices"
 	"testing"
 )
 
@@ -430,6 +434,184 @@ func hasCandidate(res Result, id string) bool {
 		}
 	}
 	return false
+}
+
+func TestFieldNamesRoundTrip(t *testing.T) {
+	names := []string{"Avg", "Min"}
+	b := NewBuilder()
+	if err := b.AddSites([]Site{place("meadow", -120, 38)}); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.AddStations([]Station{
+		{ID: "open-logger", Name: "Open", OrganizationID: "org", Intervals: []Interval{{SiteID: "meadow", BeginsAt: 1}}},
+		{ID: "closed-logger", Name: "Closed", OrganizationID: "org", Intervals: []Interval{{SiteID: "meadow", BeginsAt: 1, EndsBefore: 10}}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.AddDatastreams([]Datastream{
+		{ID: "ds-open", OrganizationID: "org", StationID: "open-logger", PublicOK: true, MemberOK: true, FieldNames: names},
+		{ID: "ds-closed", OrganizationID: "org", StationID: "closed-logger", PublicOK: true, MemberOK: true, FieldNames: []string{"Value"}},
+		{ID: "ds-secret", OrganizationID: "org", StationID: "open-logger", PublicOK: false, MemberOK: true, FieldNames: []string{"Secret"}},
+		{ID: "ds-none", OrganizationID: "org", StationID: "open-logger", PublicOK: true, MemberOK: true},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	names[0] = "Mutated"
+	priv, _, err := b.Finish(FinishPrivate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	shard, err := Open(priv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	openQ := query(t, shard, Query{Geometry: GeometryShown, Zoom: 11, AllHits: true, IncludeMemberOnly: true})
+	if openQ.Kind != KindSites || openQ.HasMore || openQ.TotalCount != 3 || len(openQ.Hits) != 3 {
+		t.Fatalf("open hits: kind=%s total=%d len=%d more=%v", openQ.Kind, openQ.TotalCount, len(openQ.Hits), openQ.HasMore)
+	}
+	byID := map[string]Hit{}
+	for _, hit := range openQ.Hits {
+		byID[hit.DatastreamID] = hit
+	}
+	if !slices.Equal(byID["ds-open"].FieldNames, []string{"Avg", "Min"}) {
+		t.Fatalf("open names: %v", byID["ds-open"].FieldNames)
+	}
+	if len(byID["ds-none"].FieldNames) != 0 {
+		t.Fatalf("empty names: %v", byID["ds-none"].FieldNames)
+	}
+	window := query(t, shard, Query{
+		Geometry: GeometryShown, Zoom: 11, AllHits: true, IncludeMemberOnly: true,
+		BeginsAt: 1, EndsBefore: 10,
+	})
+	var closed Hit
+	for _, hit := range window.Hits {
+		if hit.DatastreamID == "ds-closed" {
+			closed = hit
+		}
+	}
+	if !slices.Equal(closed.FieldNames, []string{"Value"}) {
+		t.Fatalf("closed names: %v", closed.FieldNames)
+	}
+	pub, _, err := b.Finish(FinishPublic)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pubShard, err := Open(pub)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pubQ := query(t, pubShard, Query{Geometry: GeometryShown, Zoom: 11, AllHits: true})
+	if pubQ.TotalCount != 2 || len(pubQ.Hits) != 2 {
+		t.Fatalf("public hits: total=%d len=%d", pubQ.TotalCount, len(pubQ.Hits))
+	}
+	for _, hit := range pubQ.Hits {
+		if hit.DatastreamID == "ds-secret" {
+			t.Fatal("public shard kept a member-only row")
+		}
+		if hit.DatastreamID == "ds-open" && !slices.Equal(hit.FieldNames, []string{"Avg", "Min"}) {
+			t.Fatalf("public names: %v", hit.FieldNames)
+		}
+	}
+	stale := append([]byte(nil), priv...)
+	binary.LittleEndian.PutUint16(stale[4:], 2)
+	if _, err := Open(stale); !errors.Is(err, ErrFormat) {
+		t.Fatalf("version 2: %v", err)
+	}
+}
+
+func TestAllHitsPastPageCap(t *testing.T) {
+	const n = 1001
+	b := NewBuilder()
+	if err := b.AddSite(place("meadow", -120, 38)); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.AddStation(Station{
+		ID: "logger", OrganizationID: "org",
+		Intervals: []Interval{{SiteID: "meadow", BeginsAt: 1}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	streams := make([]Datastream, n)
+	for i := range streams {
+		streams[i] = Datastream{
+			ID: fmt.Sprintf("ds-%04d", i), OrganizationID: "org", StationID: "logger",
+			PublicOK: true, MemberOK: true,
+		}
+	}
+	if err := b.AddDatastreams(streams); err != nil {
+		t.Fatal(err)
+	}
+	blob, docCount, err := b.Finish(FinishPrivate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if docCount != n {
+		t.Fatalf("docs %d", docCount)
+	}
+	shard, err := Open(blob)
+	if err != nil {
+		t.Fatal(err)
+	}
+	q := Query{Geometry: GeometryShown, Zoom: 11, IncludeMemberOnly: true}
+	all := query(t, shard, Query{Geometry: q.Geometry, Zoom: q.Zoom, IncludeMemberOnly: true, AllHits: true})
+	if all.Kind != KindSites || all.HasMore || all.TotalCount != n || len(all.Hits) != n {
+		t.Fatalf("all: kind=%s total=%d len=%d more=%v", all.Kind, all.TotalCount, len(all.Hits), all.HasMore)
+	}
+	paged := query(t, shard, Query{Geometry: q.Geometry, Zoom: q.Zoom, IncludeMemberOnly: true, PageSize: 1000})
+	if len(paged.Hits) != 1000 || !paged.HasMore || paged.TotalCount != n {
+		t.Fatalf("page: len=%d more=%v total=%d", len(paged.Hits), paged.HasMore, paged.TotalCount)
+	}
+	clustered := query(t, shard, Query{Geometry: q.Geometry, Zoom: 0, IncludeMemberOnly: true, AllHits: true})
+	if clustered.Kind != KindClusters || len(clustered.Hits) != 0 || clustered.TotalCount != n {
+		t.Fatalf("clusters: kind=%s hits=%d total=%d", clustered.Kind, len(clustered.Hits), clustered.TotalCount)
+	}
+}
+
+func TestCombineAllHits(t *testing.T) {
+	left := manyAtOneSite(t, "org-a", 3)
+	right := manyAtOneSite(t, "org-b", 2)
+	q := Query{Geometry: GeometryShown, Zoom: 11, IncludeMemberOnly: true, AllHits: true}
+	parts := []Result{query(t, left, q), query(t, right, q)}
+	merged, err := Combine(q, parts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if merged.HasMore || merged.TotalCount != 5 || len(merged.Hits) != 5 {
+		t.Fatalf("combined: total=%d len=%d more=%v", merged.TotalCount, len(merged.Hits), merged.HasMore)
+	}
+}
+
+func manyAtOneSite(t *testing.T, org string, n int) *Shard {
+	t.Helper()
+	b := NewBuilder()
+	site := place("meadow", -120, 38)
+	site.OrganizationID = org
+	if err := b.AddSite(site); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.AddStation(Station{
+		ID: "logger", OrganizationID: org,
+		Intervals: []Interval{{SiteID: "meadow", BeginsAt: 1}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < n; i++ {
+		if err := b.AddDatastream(Datastream{
+			ID: fmt.Sprintf("%s-%d", org, i), OrganizationID: org, StationID: "logger",
+			PublicOK: true, MemberOK: true, FieldNames: []string{"Avg"},
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	blob, _, err := b.Finish(FinishPrivate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	shard, err := Open(blob)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return shard
 }
 
 func idsOf(res Result) []string {

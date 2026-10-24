@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	formatVersion uint16 = 2
+	formatVersion uint16 = 3
 	maxField             = 64 << 20
 	// noOpenSite is the in-memory forward-row index when every deployment has ended.
 	noOpenSite = -1
@@ -37,6 +37,7 @@ type forwardRow struct {
 	measurement    string
 	purpose        string
 	organizationID string
+	fieldNames     []string
 	openSite       int
 }
 
@@ -87,6 +88,7 @@ func writeShard(img shardImage) ([]byte, error) {
 		e.str(row.purpose)
 		e.str(row.organizationID)
 		e.u32(uint32(row.openSite))
+		e.strs(row.fieldNames)
 	}
 	if err := e.bitmaps(img.purpose); err != nil {
 		return nil, err
@@ -220,6 +222,7 @@ func writePublicShard(img shardImage) ([]byte, uint32, error) {
 			e.u32(uint32(siteRemap[row.openSite]))
 			addPosting(currentSite, img.sites[row.openSite].ID, doc)
 		}
+		e.strs(row.fieldNames)
 		if row.purpose != "" {
 			addPosting(purpose, row.purpose, doc)
 		}
@@ -366,6 +369,13 @@ func (e *enc) str(s string) {
 	e.b = append(e.b, s...)
 }
 
+func (e *enc) strs(ss []string) {
+	e.u32(uint32(len(ss)))
+	for _, s := range ss {
+		e.str(s)
+	}
+}
+
 func (e *enc) box(b Box) {
 	e.f64(b.West)
 	e.f64(b.South)
@@ -486,6 +496,25 @@ func (d *dec) str() (string, error) {
 	return string(p), nil
 }
 
+func (d *dec) strs() ([]string, error) {
+	n, err := d.u32()
+	if err != nil {
+		return nil, err
+	}
+	if n == 0 {
+		return nil, nil
+	}
+	out := make([]string, n)
+	for i := range out {
+		s, err := d.str()
+		if err != nil {
+			return nil, err
+		}
+		out[i] = s
+	}
+	return out, nil
+}
+
 func (d *dec) box() (Box, error) {
 	var b Box
 	var err error
@@ -602,6 +631,9 @@ func (d *dec) forward(siteCount uint32) (forwardRow, error) {
 	}
 	open, err := d.u32()
 	if err != nil {
+		return forwardRow{}, err
+	}
+	if row.fieldNames, err = d.strs(); err != nil {
 		return forwardRow{}, err
 	}
 	if open == noOpenSiteIndex {

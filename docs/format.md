@@ -8,7 +8,7 @@ Integers are little-endian. A string is a `uint32` byte length followed by the b
 
 ```text
 "DS01"                 4 bytes
-version                uint16 = 2
+version                uint16 = 3
 docCount               uint32
 siteCount              uint32
 site records           siteCount times
@@ -48,13 +48,15 @@ Each forward row, in doc id order:
 ```text
 datastream id, name, station id, station name, unit, measurement, purpose, organization id
 open site index    uint32   // ^uint32(0) means every deployment has ended
+field name count   uint32
+field names        count times, each a string
 ```
 
-Station name is copied from the station. A site-attached datastream leaves it empty. Site name is not on this row.
+Station name is copied from the station. A site-attached datastream leaves it empty. Site name is not on this row. Field names are the datastream's output field names, in order. A count of zero means the datastream has none.
 
 A posting section is a `uint32` count, then that many pairs of string key and bitmap. Keys are sorted. Purpose and measurement use the caller's strings. Open-site keys are site ids, and those bitmaps hold the datastreams whose open deployment is that site. A datastream whose deployments have all ended is omitted. Open-group keys are group ids, and those bitmaps hold the datastreams whose open interval carries that id. Empty group ids are omitted. Window queries do not use the open-site or open-group bitmaps; they scan the interval table, including intervals that have ended. The open-group bitmaps are a filter accelerator, not a counted facet.
 
-`Open` rejects a bad magic, a version other than 2, a truncated buffer, or trailing bytes.
+`Open` rejects a bad magic, a version other than 3, a truncated buffer, or trailing bytes.
 
 `Finish(FinishPrivate)` writes the layout above. `Finish(FinishPublic)` writes a second `DS01` blob from the same index. Exact boxes and exact points in that blob are copies of the shown values. Only `public_ok` datastreams are stored, and a site is stored only when one of those datastreams uses it. Doc ids and site indexes in the public blob are renumbered. Member-only datastreams are absent.
 

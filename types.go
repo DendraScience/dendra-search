@@ -81,7 +81,10 @@ type Datastream struct {
 	Purpose        string
 	PublicOK       bool
 	MemberOK       bool
-	Intervals      []Interval
+	// FieldNames are the datastream output field names, in display order.
+	// Empty means the datastream has none. The builder copies the slice.
+	FieldNames []string
+	Intervals  []Interval
 }
 
 // Kind is the map layer for a result.
@@ -121,8 +124,12 @@ type Query struct {
 	IncludeMemberOnly bool
 	MapSiteLimit      uint32
 	MinSiteZoom       uint32
+	// AllHits returns every matching hit when the layer is sites, and no hit
+	// rows when the layer is clusters. TotalCount is still set. PageSize and
+	// PageAfter are ignored. HasMore is false.
+	AllHits bool
 	// PageSize is the maximum number of hits to return. Zero returns none.
-	// TotalCount is still set.
+	// TotalCount is still set. Ignored when AllHits is set.
 	PageSize uint32
 	// PageAfter is the first doc id to return, inclusive. Zero starts at the
 	// beginning. Pass Result.NextPageAfter only when Result.HasMore is set.
@@ -174,6 +181,7 @@ type Hit struct {
 	UnitName         string
 	Measurement      string
 	Purpose          string
+	FieldNames       []string
 }
 
 // Result is the map layer for one shard, or for Combine.

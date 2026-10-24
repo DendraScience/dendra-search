@@ -286,6 +286,7 @@ type queryIn struct {
 	MinSiteZoom       uint32   `json:"min_site_zoom"`
 	PageSize          uint32   `json:"page_size"`
 	PageAfter         uint32   `json:"page_after"`
+	AllHits           bool     `json:"all_hits"`
 }
 
 type pointJSON struct {
@@ -325,16 +326,17 @@ type siteJSON struct {
 }
 
 type hitJSON struct {
-	DatastreamID     string `json:"datastream_id"`
-	Name             string `json:"name"`
-	OrganizationID   string `json:"organization_id"`
-	OrganizationName string `json:"organization_name"`
-	StationID        string `json:"station_id,omitempty"`
-	StationName      string `json:"station_name,omitempty"`
-	SiteID           string `json:"site_id"`
-	SiteName         string `json:"site_name"`
-	Measurement      string `json:"measurement"`
-	Purpose          string `json:"purpose"`
+	DatastreamID     string   `json:"datastream_id"`
+	Name             string   `json:"name"`
+	OrganizationID   string   `json:"organization_id"`
+	OrganizationName string   `json:"organization_name"`
+	StationID        string   `json:"station_id,omitempty"`
+	StationName      string   `json:"station_name,omitempty"`
+	SiteID           string   `json:"site_id"`
+	SiteName         string   `json:"site_name"`
+	Measurement      string   `json:"measurement"`
+	Purpose          string   `json:"purpose"`
+	FieldNames       []string `json:"field_names"`
 }
 
 type queryOut struct {
@@ -383,6 +385,7 @@ func query(raw string) (queryOut, error) {
 		MinSiteZoom:       in.MinSiteZoom,
 		PageSize:          in.PageSize,
 		PageAfter:         in.PageAfter,
+		AllHits:           in.AllHits,
 	}
 	if in.Viewport != nil {
 		q.Viewport = &search.Box{
@@ -490,12 +493,20 @@ func present(res search.Result, paged bool) queryOut {
 			SiteName:         hit.SiteName,
 			Measurement:      hit.Measurement,
 			Purpose:          hit.Purpose,
+			FieldNames:       fieldNamesJSON(hit.FieldNames),
 		}
 	}
 	if paged {
 		out.NextPageAfter = res.NextPageAfter
 	}
 	return out
+}
+
+func fieldNamesJSON(names []string) []string {
+	if names == nil {
+		return []string{}
+	}
+	return names
 }
 
 func countsJSON(counts []search.Count) []countJSON {
