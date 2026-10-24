@@ -14,12 +14,12 @@ func (s *Shard) Query(q Query) (Result, error) {
 	if err := validateQuery(q); err != nil {
 		return Result{}, err
 	}
-	hits, withoutSites, withoutMeas, siteBM := s.evaluate(q)
+	hits, scope, withoutSites, withoutMeas, siteBM := s.evaluate(q)
 	res := lay(q, s.candidates(q, hits, siteBM))
 	res.TotalCount = uint32(hits.GetCardinality())
 	res.MeasurementCounts = measurementCounts(s.measurement, withoutMeas)
 	if res.Kind == KindSites {
-		res.SiteCounts = siteCounts(q, withoutSites, siteBM)
+		res.SiteCounts = s.siteCounts(scope, withoutSites, siteBM)
 	}
 	if q.PageSize > 0 {
 		res.Hits, res.NextPageAfter, res.HasMore = s.page(q, hits)
@@ -27,7 +27,7 @@ func (s *Shard) Query(q Query) (Result, error) {
 	return res, nil
 }
 
-func (s *Shard) evaluate(q Query) (hits, withoutSites, withoutMeas *roaring.Bitmap, siteBM map[string]*roaring.Bitmap) {
+func (s *Shard) evaluate(q Query) (hits, scope, withoutSites, withoutMeas *roaring.Bitmap, siteBM map[string]*roaring.Bitmap) {
 	base := s.accessBitmap(q.IncludeMemberOnly)
 	if q.Purpose != "" {
 		if p := s.purpose[q.Purpose]; p == nil {
@@ -70,20 +70,53 @@ func (s *Shard) evaluate(q Query) (hits, withoutSites, withoutMeas *roaring.Bitm
 		}
 	}
 
+	// Scope is the site-facet universe: purpose, group, access, time, and
+	// viewport — not measurement or site. withoutSites adds measurement.
+	scope = narrow(timeBase, geo)
+
+	// SiteIDs outside the geographic viewport are ignored for the hit
+	// predicate so a remembered selection does not empty the current view.
+	// If every SiteID is off-map, siteFilter stays nil (no site predicate).
+	// If at least one is in view but has no matching docs (e.g. group joint
+	// mismatch), siteFilter stays an empty bitmap so hits stay empty.
 	var siteFilter *roaring.Bitmap
 	if len(q.SiteIDs) > 0 {
+		inView := s.viewportSiteSet(q)
 		siteFilter = roaring.New()
+		anyInView := false
 		for _, id := range q.SiteIDs {
+			if inView != nil {
+				if _, ok := inView[id]; !ok {
+					continue
+				}
+			}
+			anyInView = true
 			if bm := siteBM[id]; bm != nil {
 				siteFilter.Or(bm)
 			}
 		}
+		if !anyInView {
+			siteFilter = nil
+		}
 	}
 
-	withoutSites = narrow(timeBase, meas, geo)
+	withoutSites = narrow(scope, meas)
 	withoutMeas = narrow(timeBase, siteFilter, geo)
 	hits = narrow(withoutSites, siteFilter)
-	return hits, withoutSites, withoutMeas, siteBM
+	return hits, scope, withoutSites, withoutMeas, siteBM
+}
+
+// viewportSiteSet is the site ids whose boxes intersect the viewport.
+// Nil means no viewport (every site is in view).
+func (s *Shard) viewportSiteSet(q Query) map[string]struct{} {
+	if q.Viewport == nil {
+		return nil
+	}
+	out := map[string]struct{}{}
+	for _, idx := range s.searchBoxes(q.Geometry, *q.Viewport) {
+		out[s.sites[idx].ID] = struct{}{}
+	}
+	return out
 }
 
 // accessBitmap is public_ok, or public_ok ∪ member_ok. It does not apply purpose.
@@ -287,23 +320,34 @@ func measurementCounts(postings map[string]*roaring.Bitmap, withoutMeas *roaring
 	return countsFromBitmaps(postings, withoutMeas)
 }
 
-func siteCounts(q Query, withoutSites *roaring.Bitmap, siteBM map[string]*roaring.Bitmap) []Count {
-	vals := map[string]uint32{}
+// siteCounts lists every site with hits under scope (viewport / purpose /
+// group / time / access), including zeros after the measurement filter.
+// Selecting a measurement must not remove in-view sites from the facet —
+// only their counts change. Sites outside scope are omitted; the host
+// clears site selections that leave the view. Each row carries the Site
+// name so zero-count facet rows do not fall back to bare ids.
+func (s *Shard) siteCounts(scope, withoutSites *roaring.Bitmap, siteBM map[string]*roaring.Bitmap) []Count {
+	vals := map[string]Count{}
 	for id, bm := range siteBM {
 		if bm == nil {
 			continue
 		}
-		n := withoutSites.AndCardinality(bm)
-		if n > 0 {
-			vals[id] = uint32(n)
+		if scope.AndCardinality(bm) == 0 {
+			continue
 		}
-	}
-	for _, id := range q.SiteIDs {
-		if _, ok := vals[id]; !ok {
-			vals[id] = 0
+		c := Count{
+			Value: id,
+			Count: uint32(withoutSites.AndCardinality(bm)),
 		}
+		if i, ok := s.siteAt[id]; ok {
+			site := s.sites[i]
+			c.Name = site.Name
+			c.OrganizationID = site.OrganizationID
+			c.OrganizationName = site.OrganizationName
+		}
+		vals[id] = c
 	}
-	return countsFromMap(vals)
+	return countsFromCountMap(vals)
 }
 
 func countsFromBitmaps(postings map[string]*roaring.Bitmap, mask *roaring.Bitmap) []Count {

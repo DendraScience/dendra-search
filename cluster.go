@@ -19,7 +19,7 @@ func Combine(q Query, parts []Result) (Result, error) {
 	var candidates []SiteMarker
 	var total uint32
 	meas := map[string]uint32{}
-	sites := map[string]uint32{}
+	sites := map[string]Count{}
 	var hits []Hit
 	hasMore := false
 	for _, part := range parts {
@@ -29,7 +29,16 @@ func Combine(q Query, parts []Result) (Result, error) {
 			meas[c.Value] += c.Count
 		}
 		for _, c := range part.SiteCounts {
-			sites[c.Value] += c.Count
+			prev := sites[c.Value]
+			prev.Value = c.Value
+			prev.Count += c.Count
+			// Keep the first non-empty label across shards.
+			if prev.Name == "" {
+				prev.Name = c.Name
+				prev.OrganizationID = c.OrganizationID
+				prev.OrganizationName = c.OrganizationName
+			}
+			sites[c.Value] = prev
 		}
 		hits = append(hits, part.Hits...)
 		if part.HasMore {
@@ -42,7 +51,7 @@ func Combine(q Query, parts []Result) (Result, error) {
 	res.HasMore = hasMore
 	res.MeasurementCounts = countsFromMap(meas)
 	if res.Kind == KindSites {
-		res.SiteCounts = countsFromMap(sites)
+		res.SiteCounts = countsFromCountMap(sites)
 	}
 	return res, nil
 }
@@ -167,6 +176,22 @@ func countsFromMap(vals map[string]uint32) []Count {
 	out := make([]Count, len(keys))
 	for i, k := range keys {
 		out[i] = Count{Value: k, Count: vals[k]}
+	}
+	return out
+}
+
+func countsFromCountMap(vals map[string]Count) []Count {
+	if len(vals) == 0 {
+		return nil
+	}
+	keys := make([]string, 0, len(vals))
+	for k := range vals {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	out := make([]Count, len(keys))
+	for i, k := range keys {
+		out[i] = vals[k]
 	}
 	return out
 }

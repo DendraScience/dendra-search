@@ -303,8 +303,11 @@ type boxJSON struct {
 }
 
 type countJSON struct {
-	Value string `json:"value"`
-	Count uint32 `json:"count"`
+	Value            string `json:"value"`
+	Count            uint32 `json:"count"`
+	Name             string `json:"name,omitempty"`
+	OrganizationID   string `json:"organization_id,omitempty"`
+	OrganizationName string `json:"organization_name,omitempty"`
 }
 
 type clusterJSON struct {
@@ -500,7 +503,13 @@ func present(res search.Result, paged bool) queryOut {
 func countsJSON(counts []search.Count) []countJSON {
 	out := make([]countJSON, len(counts))
 	for i, c := range counts {
-		out[i] = countJSON{Value: c.Value, Count: c.Count}
+		out[i] = countJSON{
+			Value:            c.Value,
+			Count:            c.Count,
+			Name:             c.Name,
+			OrganizationID:   c.OrganizationID,
+			OrganizationName: c.OrganizationName,
+		}
 	}
 	return out
 }

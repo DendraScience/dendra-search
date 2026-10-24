@@ -58,6 +58,46 @@ func TestAlgebra(t *testing.T) {
 		t.Fatalf("site counts %+v", air.SiteCounts)
 	}
 
+	// Soil is only at meadow. Ridge stays in the site facet at 0 so picking
+	// a measurement does not remove in-scope sites (same stability as meas).
+	soil := query(t, shard, Query{Geometry: GeometryShown, Zoom: 11, Measurements: []string{"Soil"}, IncludeMemberOnly: true, PageSize: 20})
+	if !hasCount(soil.SiteCounts, "ridge") || countOf(soil.SiteCounts, "ridge") != 0 {
+		t.Fatalf("ridge should stay at 0 under Soil: %+v", soil.SiteCounts)
+	}
+	if countOf(soil.SiteCounts, "meadow") == 0 {
+		t.Fatalf("meadow soil count %+v", soil.SiteCounts)
+	}
+	// Zero-count rows still carry the site name (hosts must not fall back
+	// to bare ids when the site is absent from the markers layer).
+	if nameOf(soil.SiteCounts, "ridge") == "" || nameOf(soil.SiteCounts, "meadow") == "" {
+		t.Fatalf("site count names %+v", soil.SiteCounts)
+	}
+
+	// Off-map SiteIDs are ignored for the hit predicate so a remembered
+	// selection does not empty the current viewport.
+	cal := &Box{West: -122, South: 37, East: -119, North: 40}
+	inView := query(t, shard, Query{
+		Geometry: GeometryShown, Zoom: 11, IncludeMemberOnly: true,
+		Viewport: cal, PageSize: 20,
+	})
+	offMapOnly := query(t, shard, Query{
+		Geometry: GeometryShown, Zoom: 11, IncludeMemberOnly: true,
+		Viewport: cal, SiteIDs: []string{"far"}, PageSize: 20,
+	})
+	if offMapOnly.TotalCount != inView.TotalCount {
+		t.Fatalf("off-map site filter emptied the view: in-view %d off-map %d", inView.TotalCount, offMapOnly.TotalCount)
+	}
+	if hasCount(offMapOnly.SiteCounts, "far") {
+		t.Fatalf("far must stay out of site_counts for this viewport: %+v", offMapOnly.SiteCounts)
+	}
+	meadowInView := query(t, shard, Query{
+		Geometry: GeometryShown, Zoom: 11, IncludeMemberOnly: true,
+		Viewport: cal, SiteIDs: []string{"meadow", "far"}, PageSize: 20,
+	})
+	if meadowInView.TotalCount == inView.TotalCount || meadowInView.TotalCount == 0 {
+		t.Fatalf("in-scope meadow should still filter (with far ignored): got %d in-view %d", meadowInView.TotalCount, inView.TotalCount)
+	}
+
 	both := query(t, shard, Query{
 		Geometry: GeometryShown, Zoom: 11, IncludeMemberOnly: true,
 		Measurements: []string{"Air", "Soil"}, SiteIDs: []string{"meadow"}, PageSize: 20,
@@ -363,6 +403,24 @@ func countOf(counts []Count, value string) uint32 {
 		}
 	}
 	return 0
+}
+
+func hasCount(counts []Count, value string) bool {
+	for _, c := range counts {
+		if c.Value == value {
+			return true
+		}
+	}
+	return false
+}
+
+func nameOf(counts []Count, value string) string {
+	for _, c := range counts {
+		if c.Value == value {
+			return c.Name
+		}
+	}
+	return ""
 }
 
 func hasCandidate(res Result, id string) bool {

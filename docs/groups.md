@@ -32,7 +32,7 @@ Group follows the interval. The open interval contributes its group, or none. A 
 
 `Query.GroupIDs` is a filter. Empty means every datastream, including those whose in-play intervals have no group. Several ids are a union: the datastream matches if one qualifying interval carries any selected id.
 
-`Result` has no group count list. `Combine` does not sum one. Measurement counts and site counts stay the facets they are, including zeros for measurements that exist in the shard, and site counts when the layer is sites.
+`Result` has no group count list. `Combine` does not sum one. Measurement counts and site counts stay the facets they are, including zeros for measurements that exist in the shard, and zeros for in-view sites when a measurement excludes them (site counts only when the layer is sites).
 
 Purpose, measurement, and access stay on the datastream. Site, group, and viewport are on the interval, and they qualify together. An interval qualifies when all of these hold:
 

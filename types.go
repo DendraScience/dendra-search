@@ -131,9 +131,15 @@ type Query struct {
 }
 
 // Count is one disjunctive facet row.
+// Name and organization fields are set on site counts (from the Site
+// record) so a host can label zero-count rows that never appear as map
+// markers. Measurement counts leave them empty.
 type Count struct {
-	Value string
-	Count uint32
+	Value            string
+	Count            uint32
+	Name             string
+	OrganizationID   string
+	OrganizationName string
 }
 
 // Cluster is a web-mercator cell of candidate sites.

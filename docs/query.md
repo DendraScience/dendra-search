@@ -26,7 +26,7 @@ Disjunctive counts omit one dimension:
 - A site count is the number of hits at that site when the site filter is removed.
 - A measurement count is the number of hits for that measurement when the measurement filter is removed.
 
-Purpose stays in both. A group filter stays in both, the way purpose does. Measurement counts are returned for both layers, including zeros for measurements that exist in the shard, so selecting one measurement does not hide the others. Site counts are returned only when the layer is sites. Selected sites are listed even when their count is zero. There is no group count. `Combine` does not sum one.
+Purpose stays in both. A group filter stays in both, the way purpose does. Measurement counts are returned for both layers, including zeros for measurements that exist in the shard, so selecting one measurement does not hide the others. Site counts are returned only when the layer is sites. Their universe is sites with hits under purpose, group, access, time, and viewport (no measurement and no site filter), including zeros when a measurement excludes a site still in that view. Sites outside the viewport are omitted from that list. Each site count carries the site name and organization so a host can label zero-count rows that never appear as map markers. `SiteIDs` whose boxes miss the geographic viewport are ignored for the hit predicate (and for measurement counts that still apply the site filter), so a host may keep an off-map selection checked without emptying the current view. Selected sites still in the viewport keep filtering. There is no group count. `Combine` does not sum one.
 
 ## Time
 

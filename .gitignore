@@ -18,3 +18,5 @@ examples/wasm/search.wasm
 examples/wasm/wasm_exec.js
 examples/map/search.wasm
 examples/map/wasm_exec.js
+wasm/search.wasm
+wasm/wasm_exec.js
