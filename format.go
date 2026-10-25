@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	formatVersion uint16 = 3
+	formatVersion uint16 = 4
 	maxField             = 64 << 20
 	// noOpenSite is the in-memory forward-row index when every deployment has ended.
 	noOpenSite = -1
@@ -38,6 +38,7 @@ type forwardRow struct {
 	purpose        string
 	organizationID string
 	fieldNames     []string
+	hasInfo        bool
 	openSite       int
 }
 
@@ -89,6 +90,7 @@ func writeShard(img shardImage) ([]byte, error) {
 		e.str(row.organizationID)
 		e.u32(uint32(row.openSite))
 		e.strs(row.fieldNames)
+		e.flag(row.hasInfo)
 	}
 	if err := e.bitmaps(img.purpose); err != nil {
 		return nil, err
@@ -223,6 +225,7 @@ func writePublicShard(img shardImage) ([]byte, uint32, error) {
 			addPosting(currentSite, img.sites[row.openSite].ID, doc)
 		}
 		e.strs(row.fieldNames)
+		e.flag(row.hasInfo)
 		if row.purpose != "" {
 			addPosting(purpose, row.purpose, doc)
 		}
@@ -348,6 +351,19 @@ type enc struct {
 	b []byte
 }
 
+func (e *enc) u8(v uint8) {
+	e.b = append(e.b, v)
+}
+
+// flag writes 1 or 0. Open rejects any other byte.
+func (e *enc) flag(v bool) {
+	if v {
+		e.u8(1)
+		return
+	}
+	e.u8(0)
+}
+
 func (e *enc) u16(v uint16) {
 	e.b = binary.LittleEndian.AppendUint16(e.b, v)
 }
@@ -446,6 +462,30 @@ func (d *dec) bytes(n int) ([]byte, error) {
 	p := d.b[d.i : d.i+n]
 	d.i += n
 	return p, nil
+}
+
+func (d *dec) u8() (uint8, error) {
+	if err := d.need(1); err != nil {
+		return 0, err
+	}
+	v := d.b[d.i]
+	d.i++
+	return v, nil
+}
+
+func (d *dec) flag() (bool, error) {
+	v, err := d.u8()
+	if err != nil {
+		return false, err
+	}
+	switch v {
+	case 0:
+		return false, nil
+	case 1:
+		return true, nil
+	default:
+		return false, ErrFormat
+	}
 }
 
 func (d *dec) u16() (uint16, error) {
@@ -634,6 +674,9 @@ func (d *dec) forward(siteCount uint32) (forwardRow, error) {
 		return forwardRow{}, err
 	}
 	if row.fieldNames, err = d.strs(); err != nil {
+		return forwardRow{}, err
+	}
+	if row.hasInfo, err = d.flag(); err != nil {
 		return forwardRow{}, err
 	}
 	if open == noOpenSiteIndex {

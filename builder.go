@@ -247,6 +247,7 @@ func (b *Builder) AddDatastream(datastream Datastream) error {
 		purpose:        datastream.Purpose,
 		organizationID: datastream.OrganizationID,
 		fieldNames:     append([]string(nil), datastream.FieldNames...),
+		hasInfo:        datastream.HasInfo,
 		openSite:       openSite,
 	})
 	return nil

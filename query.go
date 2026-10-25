@@ -416,6 +416,7 @@ func (s *Shard) hit(doc uint32, q Query) Hit {
 		Measurement:      row.measurement,
 		Purpose:          row.purpose,
 		FieldNames:       append([]string(nil), row.fieldNames...),
+		HasInfo:          row.hasInfo,
 	}
 }
 

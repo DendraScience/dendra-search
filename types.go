@@ -84,7 +84,10 @@ type Datastream struct {
 	// FieldNames are the datastream output field names, in display order.
 	// Empty means the datastream has none. The builder copies the slice.
 	FieldNames []string
-	Intervals  []Interval
+	// HasInfo is set by the host when the datastream has extra info to show.
+	// The library stores the bit and does not decide which fields count.
+	HasInfo   bool
+	Intervals []Interval
 }
 
 // Kind is the map layer for a result.
@@ -182,6 +185,8 @@ type Hit struct {
 	Measurement      string
 	Purpose          string
 	FieldNames       []string
+	// HasInfo is the forward-row bit the host set. It does not name a field.
+	HasInfo bool
 }
 
 // Result is the map layer for one shard, or for Combine.

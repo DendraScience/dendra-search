@@ -337,6 +337,7 @@ type hitJSON struct {
 	Measurement      string   `json:"measurement"`
 	Purpose          string   `json:"purpose"`
 	FieldNames       []string `json:"field_names"`
+	HasInfo          bool     `json:"has_info"`
 }
 
 type queryOut struct {
@@ -494,6 +495,7 @@ func present(res search.Result, paged bool) queryOut {
 			Measurement:      hit.Measurement,
 			Purpose:          hit.Purpose,
 			FieldNames:       fieldNamesJSON(hit.FieldNames),
+			HasInfo:          hit.HasInfo,
 		}
 	}
 	if paged {

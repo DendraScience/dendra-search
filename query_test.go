@@ -519,6 +519,64 @@ func TestFieldNamesRoundTrip(t *testing.T) {
 	}
 }
 
+func TestHasInfoRoundTrip(t *testing.T) {
+	b := NewBuilder()
+	if err := b.AddSite(place("meadow", -120, 38)); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.AddStation(Station{
+		ID: "logger", Name: "Logger", OrganizationID: "org",
+		Intervals: []Interval{{SiteID: "meadow", BeginsAt: 1}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.AddDatastreams([]Datastream{
+		{ID: "ds-info", OrganizationID: "org", StationID: "logger", PublicOK: true, MemberOK: true, HasInfo: true},
+		{ID: "ds-plain", OrganizationID: "org", StationID: "logger", PublicOK: true, MemberOK: true},
+		{ID: "ds-secret", OrganizationID: "org", StationID: "logger", PublicOK: false, MemberOK: true, HasInfo: true},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	priv, _, err := b.Finish(FinishPrivate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	shard, err := Open(priv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	byID := map[string]Hit{}
+	for _, hit := range query(t, shard, Query{Geometry: GeometryShown, Zoom: 11, AllHits: true, IncludeMemberOnly: true}).Hits {
+		byID[hit.DatastreamID] = hit
+	}
+	if !byID["ds-info"].HasInfo || byID["ds-plain"].HasInfo || !byID["ds-secret"].HasInfo {
+		t.Fatalf("private info: info=%v plain=%v secret=%v", byID["ds-info"].HasInfo, byID["ds-plain"].HasInfo, byID["ds-secret"].HasInfo)
+	}
+	pub, _, err := b.Finish(FinishPublic)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pubShard, err := Open(pub)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pubByID := map[string]Hit{}
+	for _, hit := range query(t, pubShard, Query{Geometry: GeometryShown, Zoom: 11, AllHits: true}).Hits {
+		if hit.DatastreamID == "ds-secret" {
+			t.Fatal("public shard kept a member-only row")
+		}
+		pubByID[hit.DatastreamID] = hit
+	}
+	if !pubByID["ds-info"].HasInfo || pubByID["ds-plain"].HasInfo {
+		t.Fatalf("public info: info=%v plain=%v", pubByID["ds-info"].HasInfo, pubByID["ds-plain"].HasInfo)
+	}
+	stale := append([]byte(nil), priv...)
+	binary.LittleEndian.PutUint16(stale[4:], 3)
+	if _, err := Open(stale); !errors.Is(err, ErrFormat) {
+		t.Fatalf("version 3: %v", err)
+	}
+}
+
 func TestAllHitsPastPageCap(t *testing.T) {
 	const n = 1001
 	b := NewBuilder()
