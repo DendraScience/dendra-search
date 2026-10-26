@@ -15,7 +15,10 @@ func (s *Shard) Query(q Query) (Result, error) {
 		return Result{}, err
 	}
 	hits, scope, withoutSites, withoutMeas, siteBM := s.evaluate(q)
-	res := lay(q, s.candidates(q, hits, siteBM))
+	// Map candidates omit the site filter so selecting sites does not
+	// clear nearby markers (same universe as site counts). Hits and
+	// TotalCount still apply SiteIDs.
+	res := lay(q, s.candidates(q, withoutSites, siteBM))
 	res.TotalCount = uint32(hits.GetCardinality())
 	res.MeasurementCounts = measurementCounts(s.measurement, withoutMeas)
 	if res.Kind == KindSites {
@@ -285,14 +288,16 @@ func (s *Shard) searchBoxes(geometry string, v Box) []int {
 	return out
 }
 
-func (s *Shard) candidates(q Query, hits *roaring.Bitmap, siteBM map[string]*roaring.Bitmap) []SiteMarker {
+// candidates lists in-view sites with at least one match in mask. Callers
+// pass withoutSites so a SiteIDs filter does not remove other markers.
+func (s *Shard) candidates(q Query, mask *roaring.Bitmap, siteBM map[string]*roaring.Bitmap) []SiteMarker {
 	out := make([]SiteMarker, 0)
 	for i := range s.sites {
 		bm := siteBM[s.sites[i].ID]
 		if bm == nil {
 			continue
 		}
-		n := hits.AndCardinality(bm)
+		n := mask.AndCardinality(bm)
 		if n == 0 {
 			continue
 		}
@@ -402,6 +407,7 @@ func (s *Shard) hit(doc uint32, q Query) Hit {
 		siteIdx = s.siteInWindow(doc, q, siteIdx)
 	}
 	site := s.sites[siteIdx]
+	begins, ends := s.extent(doc)
 	return Hit{
 		DocID:            doc,
 		DatastreamID:     row.datastreamID,
@@ -417,7 +423,17 @@ func (s *Shard) hit(doc uint32, q Query) Hit {
 		Purpose:          row.purpose,
 		FieldNames:       append([]string(nil), row.fieldNames...),
 		HasInfo:          row.hasInfo,
+		BeginsAt:         begins,
+		EndsBefore:       ends,
 	}
+}
+
+// extent is the outer deployment window for doc. Intervals are stored in
+// begins order. The last interval's ends is 0 when that deployment is still open.
+func (s *Shard) extent(doc uint32) (int64, int64) {
+	intervals := s.byDoc[doc]
+	last := intervals[len(intervals)-1]
+	return intervals[0].begins, last.ends
 }
 
 // siteInWindow returns the latest qualifying interval's site. Group, site, and

@@ -280,6 +280,8 @@ type queryIn struct {
 	SiteIDs           []string `json:"site_ids"`
 	GroupIDs          []string `json:"group_ids"`
 	OrganizationIDs   []string `json:"organization_ids"`
+	BeginsAt          int64    `json:"begins_at"`
+	EndsBefore        int64    `json:"ends_before"`
 	Viewport          *boxIn   `json:"viewport"`
 	Geometry          string   `json:"geometry"`
 	Zoom              uint32   `json:"zoom"`
@@ -378,6 +380,8 @@ func query(raw string) (queryOut, error) {
 		Measurements:      in.Measurements,
 		SiteIDs:           in.SiteIDs,
 		GroupIDs:          in.GroupIDs,
+		BeginsAt:          in.BeginsAt,
+		EndsBefore:        in.EndsBefore,
 		Geometry:          in.Geometry,
 		Zoom:              in.Zoom,
 		IncludeMemberOnly: in.IncludeMemberOnly,

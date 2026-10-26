@@ -101,6 +101,13 @@ func TestAlgebra(t *testing.T) {
 	if meadowInView.TotalCount == inView.TotalCount || meadowInView.TotalCount == 0 {
 		t.Fatalf("in-scope meadow should still filter (with far ignored): got %d in-view %d", meadowInView.TotalCount, inView.TotalCount)
 	}
+	// Site filter narrows hits but must not clear other in-view map markers.
+	if meadowInView.Kind != KindSites {
+		t.Fatalf("expected sites layer, got %s", meadowInView.Kind)
+	}
+	if len(meadowInView.Sites) != len(inView.Sites) {
+		t.Fatalf("site filter cleared map candidates: filtered %v in-view %v", idsOf(meadowInView), idsOf(inView))
+	}
 
 	both := query(t, shard, Query{
 		Geometry: GeometryShown, Zoom: 11, IncludeMemberOnly: true,
@@ -140,12 +147,18 @@ func TestAlgebra(t *testing.T) {
 	if len(openQ.Hits) != 1 || openQ.Hits[0].SiteName != "ridge" || openQ.Hits[0].StationName != "Moved logger" {
 		t.Fatalf("open hit %+v", openQ.Hits)
 	}
+	if openQ.Hits[0].BeginsAt != 1000 || openQ.Hits[0].EndsBefore != 0 {
+		t.Fatalf("open extent %+v", openQ.Hits[0])
+	}
 	past := query(t, shard, Query{Geometry: GeometryShown, Zoom: 11, Measurements: []string{"Wind"}, BeginsAt: 1000, EndsBefore: 2000, PageSize: 5})
 	if !hasCandidate(past, "meadow") || hasCandidate(past, "ridge") {
 		t.Fatalf("historical site: %+v", idsOf(past))
 	}
 	if len(past.Hits) != 1 || past.Hits[0].SiteName != "meadow" || past.Hits[0].StationName != "Moved logger" {
 		t.Fatalf("window hit %+v", past.Hits)
+	}
+	if past.Hits[0].BeginsAt != 1000 || past.Hits[0].EndsBefore != 0 {
+		t.Fatalf("window extent %+v", past.Hits[0])
 	}
 	gap := query(t, shard, Query{Geometry: GeometryShown, Zoom: 11, Measurements: []string{"Wind"}, BeginsAt: 2000, EndsBefore: 3000, PageSize: 5})
 	if gap.TotalCount != 0 {
@@ -444,7 +457,10 @@ func TestFieldNamesRoundTrip(t *testing.T) {
 	}
 	if err := b.AddStations([]Station{
 		{ID: "open-logger", Name: "Open", OrganizationID: "org", Intervals: []Interval{{SiteID: "meadow", BeginsAt: 1}}},
-		{ID: "closed-logger", Name: "Closed", OrganizationID: "org", Intervals: []Interval{{SiteID: "meadow", BeginsAt: 1, EndsBefore: 10}}},
+		{ID: "closed-logger", Name: "Closed", OrganizationID: "org", Intervals: []Interval{
+			{SiteID: "meadow", BeginsAt: 1, EndsBefore: 10},
+			{SiteID: "meadow", BeginsAt: 20, EndsBefore: 30},
+		}},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -476,6 +492,9 @@ func TestFieldNamesRoundTrip(t *testing.T) {
 	if !slices.Equal(byID["ds-open"].FieldNames, []string{"Avg", "Min"}) {
 		t.Fatalf("open names: %v", byID["ds-open"].FieldNames)
 	}
+	if byID["ds-open"].BeginsAt != 1 || byID["ds-open"].EndsBefore != 0 {
+		t.Fatalf("open extent %+v", byID["ds-open"])
+	}
 	if len(byID["ds-none"].FieldNames) != 0 {
 		t.Fatalf("empty names: %v", byID["ds-none"].FieldNames)
 	}
@@ -491,6 +510,9 @@ func TestFieldNamesRoundTrip(t *testing.T) {
 	}
 	if !slices.Equal(closed.FieldNames, []string{"Value"}) {
 		t.Fatalf("closed names: %v", closed.FieldNames)
+	}
+	if closed.BeginsAt != 1 || closed.EndsBefore != 30 {
+		t.Fatalf("closed extent %+v", closed)
 	}
 	pub, _, err := b.Finish(FinishPublic)
 	if err != nil {
@@ -511,6 +533,22 @@ func TestFieldNamesRoundTrip(t *testing.T) {
 		if hit.DatastreamID == "ds-open" && !slices.Equal(hit.FieldNames, []string{"Avg", "Min"}) {
 			t.Fatalf("public names: %v", hit.FieldNames)
 		}
+		if hit.DatastreamID == "ds-open" && (hit.BeginsAt != 1 || hit.EndsBefore != 0) {
+			t.Fatalf("public extent %+v", hit)
+		}
+	}
+	pubWindow := query(t, pubShard, Query{
+		Geometry: GeometryShown, Zoom: 11, AllHits: true,
+		BeginsAt: 1, EndsBefore: 10,
+	})
+	var pubClosed Hit
+	for _, hit := range pubWindow.Hits {
+		if hit.DatastreamID == "ds-closed" {
+			pubClosed = hit
+		}
+	}
+	if pubClosed.BeginsAt != 1 || pubClosed.EndsBefore != 30 {
+		t.Fatalf("public closed extent %+v", pubClosed)
 	}
 	stale := append([]byte(nil), priv...)
 	binary.LittleEndian.PutUint16(stale[4:], 2)

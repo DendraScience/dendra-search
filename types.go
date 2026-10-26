@@ -187,6 +187,11 @@ type Hit struct {
 	FieldNames       []string
 	// HasInfo is the forward-row bit the host set. It does not name a field.
 	HasInfo bool
+	// BeginsAt and EndsBefore are the outer deployment window, Unix
+	// milliseconds. EndsBefore is 0 when the last deployment is still open.
+	// They do not follow the query window or the site on this hit.
+	BeginsAt   int64
+	EndsBefore int64
 }
 
 // Result is the map layer for one shard, or for Combine.

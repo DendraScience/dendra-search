@@ -278,6 +278,8 @@ type queryIn struct {
 	SiteIDs           []string `json:"site_ids"`
 	GroupIDs          []string `json:"group_ids"`
 	OrganizationIDs   []string `json:"organization_ids"`
+	BeginsAt          int64    `json:"begins_at"`
+	EndsBefore        int64    `json:"ends_before"`
 	Viewport          *boxIn   `json:"viewport"`
 	Geometry          string   `json:"geometry"`
 	Zoom              uint32   `json:"zoom"`
@@ -338,6 +340,8 @@ type hitJSON struct {
 	Purpose          string   `json:"purpose"`
 	FieldNames       []string `json:"field_names"`
 	HasInfo          bool     `json:"has_info"`
+	BeginsAt         int64    `json:"begins_at"`
+	EndsBefore       int64    `json:"ends_before"`
 }
 
 type queryOut struct {
@@ -379,6 +383,8 @@ func query(raw string) (queryOut, error) {
 		Measurements:      in.Measurements,
 		SiteIDs:           in.SiteIDs,
 		GroupIDs:          in.GroupIDs,
+		BeginsAt:          in.BeginsAt,
+		EndsBefore:        in.EndsBefore,
 		Geometry:          in.Geometry,
 		Zoom:              in.Zoom,
 		IncludeMemberOnly: in.IncludeMemberOnly,
@@ -496,6 +502,8 @@ func present(res search.Result, paged bool) queryOut {
 			Purpose:          hit.Purpose,
 			FieldNames:       fieldNamesJSON(hit.FieldNames),
 			HasInfo:          hit.HasInfo,
+			BeginsAt:         hit.BeginsAt,
+			EndsBefore:       hit.EndsBefore,
 		}
 	}
 	if paged {

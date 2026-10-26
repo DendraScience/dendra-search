@@ -51,7 +51,7 @@ GroupIDs(beginsAt, endsBefore int64, includeMemberOnly bool) ([]string, error)
 
 ## Map layer
 
-Candidate sites are sites with at least one hit. The count is distinct sites, not datastreams.
+Candidate sites are sites with at least one match under the query with the site filter removed (the same universe as site counts). Selecting sites therefore keeps nearby markers on the map so the host can multi-select; `TotalCount` and hit rows still apply `SiteIDs`. The count is distinct sites, not datastreams.
 
 The layer is `clusters` when the candidate count is above `MapSiteLimit`, or when `Zoom` is below `MinSiteZoom`. Zoom 0 is the world. That layer returns measurement counts and omits the site list, so a zoomed-out request does not return every site. `TotalCount` is still set.
 
@@ -59,7 +59,7 @@ Otherwise the layer is `sites`: one marker per candidate, measurement counts, si
 
 Clusters are web-mercator cells 48 pixels on a side. The world width at zoom z is `256 * 2^z`. The centroid is the mean of the member digest points in the geometry you named. `Expansion` is the axis-aligned box of those members. A viewport with `East < West` is split at the antimeridian. Area sites are matched by their box, not by substituting the digest point.
 
-Hits are in doc id order. `Query` has no order field. Each hit carries the datastream name, measurement, station name, output field names, and the `HasInfo` bit from the forward row. Station name is empty when the datastream is site-attached. Field names are empty when the datastream has none. Site name is the site for this query: the open deployment, or the deployment that overlaps the date window. `PageAfter` is the first doc id to return. `NextPageAfter` is the cursor for the next page when `HasMore` is set. It is valid only for this shard's bytes. A rebuild assigns doc ids again. The RPC page token is not this cursor. `AllHits` does not use that cursor.
+Hits are in doc id order. `Query` has no order field. Each hit carries the datastream name, measurement, station name, output field names, and the `HasInfo` bit from the forward row, and the outer deployment window: earliest `BeginsAt` and the last interval's `EndsBefore` (`0` when that deployment is still open). That window does not follow the query window or the site labeled on the row. Station name is empty when the datastream is site-attached. Field names are empty when the datastream has none. Site name is the site for this query: the open deployment, or the deployment that overlaps the date window. `PageAfter` is the first doc id to return. `NextPageAfter` is the cursor for the next page when `HasMore` is set. It is valid only for this shard's bytes. A rebuild assigns doc ids again. The RPC page token is not this cursor. `AllHits` does not use that cursor.
 
 ## Combine
 
